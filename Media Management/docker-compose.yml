@@ -1,13 +1,8 @@
 
 # Compose file for the *arr stack.
-# Before starting, run ./setup-arr-folders.sh to create the recommended folder structure.
+
 # All media/torrents/usenet folders use ${DATA_PATH} from .env (edit as needed).
 # Config folders remain local in ./[service]/config.
-
-#############################################################################
-# NOTICE: We recently switched to using a .env file. PLEASE refer to the docs.
-# https://github.com/TechHutTV/homelab/tree/main/media#docker-compose-and-env
-#############################################################################
 
 networks:
   servarrnetwork:
@@ -40,7 +35,6 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ping -c 1 www.google.com || exit 1
       interval: 20s
       timeout: 10s
       retries: 5
@@ -77,7 +71,6 @@ services:
   deunhealth:
     image: qmcgaw/deunhealth
     container_name: deunhealth
-    network_mode: "none"
     environment:
       - LOG_LEVEL=info
       - HEALTH_SERVER_ADDRESS=127.0.0.1:9999
@@ -197,7 +190,6 @@ services:
 #
   ytdl-sub:
     image: ghcr.io/jmbannon/ytdl-sub:latest
-    container_name: ytdl-sub
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
