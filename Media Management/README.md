@@ -48,9 +48,10 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 
 ## 📁 Storage Structure
 
-### NFS Storage (TrueNAS)
+
+### NFS Storage (Customizable)
 ```
-/mnt/media/                 # NFS mounted from TrueNAS 10.84.2.60
+/mnt/media/                 # NFS mounted from your NAS (e.g., 192.168.1.100)
 ├── media/                  # Final media library
 │   ├── movies/            # Radarr movies
 │   ├── tv/                # Sonarr TV shows
@@ -66,10 +67,11 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 │   ├── incomplete/        # Active torrents
 │   └── watch/             # Watch folder
 └── usenet/                # NZBGet downloads (now using NFS)
-    ├── complete/          # Completed downloads
-    ├── incomplete/        # Active downloads
-    └── intermediate/      # Processing directory
+   ├── complete/          # Completed downloads
+   ├── incomplete/        # Active downloads
+   └── intermediate/      # Processing directory
 ```
+*Both the NFS IP address and mount location can be customized in your `.env` file and setup scripts.*
 
 ## 🐳 Included Services
 
@@ -109,8 +111,8 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 ## ⚙️ Configuration
 
 ### Environment Variables (.env)
-- `NFS_SERVER`: TrueNAS IP (10.84.2.60)
-- `NFS_SHARE`: Share path (/mnt/Pool1/MediaData)
+- `NFS_SERVER`: NAS IP (e.g., 192.168.1.100)
+- `NFS_SHARE`: Share path (e.g., /mnt/yourshare)
 - `PUID/PGID`: User/Group IDs (1000)
 - `TZ`: Timezone
  - `DATA_PATH`: Host media path (default /mnt/media)
@@ -144,11 +146,20 @@ docker compose up -d
 5. Set up root folders and quality profiles
 6. Import TRASHguides custom formats
 
-## 📖 Documentation
 
-- **[Configuration Guide](CONFIGURATION_GUIDE.md)** - Detailed setup instructions
-- **[TRASHguides](https://trash-guides.info/)** - Best practices reference
-- **Application Wikis**: [Sonarr](https://wiki.servarr.com/sonarr) | [Radarr](https://wiki.servarr.com/radarr)
+
+## 📖 Service Guides
+
+- [NZBGet Guide](GUIDE_NZBGet.md)
+- [Gluetun Guide](GUIDE_Gluetun.md)
+- [qBittorrent Guide](GUIDE_qBittorrent.md)
+
+---
+
+**[Configuration Guide](CONFIGURATION_GUIDE.md)** - Detailed setup instructions
+**[Troubleshooting Guide](TROUBLESHOOTING_GUIDE.md)** - Common issues and solutions
+**[TRASHguides](https://trash-guides.info/)** - Best practices reference
+**Application Wikis**: [Sonarr](https://wiki.servarr.com/sonarr) | [Radarr](https://wiki.servarr.com/radarr)
 
 ## 🔧 System Requirements
 
