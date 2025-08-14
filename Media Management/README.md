@@ -19,6 +19,10 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
    ```bash
    ./manage.sh start
    ```
+   On Windows PowerShell:
+   ```powershell
+   ./manage.ps1 start
+   ```
 
 3. **Check Status**:
    ```bash
@@ -109,6 +113,28 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 - `NFS_SHARE`: Share path (/mnt/Pool1/MediaData)
 - `PUID/PGID`: User/Group IDs (1000)
 - `TZ`: Timezone
+ - `DATA_PATH`: Host media path (default /mnt/media)
+ - Ports (override if needed): `PROWLARR_PORT`, `SONARR_PORT`, etc.
+ - `NETWORK_NAME`: Custom Docker network name
+
+Copy `.env.example` to `.env` and adjust values as needed.
+
+### Compose Profiles
+- `core`: Prowlarr, Sonarr, Radarr
+- `torrent`: qBittorrent
+- `usenet`: NZBGet
+- `extras`: Lidarr, Readarr, Bazarr, Jellyseerr, Notifiarr, Flaresolverr
+
+Enable/disable with Compose profiles env var:
+```bash
+export COMPOSE_PROFILES=core,torrent,usenet,extras
+docker compose up -d
+```
+PowerShell:
+```powershell
+$env:COMPOSE_PROFILES = 'core,torrent,usenet,extras'
+docker compose up -d
+```
 
 ### First-Time Setup
 1. Run `sudo ./setup.sh` to mount NFS and create folders

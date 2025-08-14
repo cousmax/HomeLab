@@ -1,12 +1,13 @@
 ---
 # *arr Stack Docker Compose Configuration - VM Ready
-# This version is designed for fresh VMs and includes local storage fallback
+# Designed for fresh VMs; parameterized via .env with sensible fallbacks
 
 services:
   # Prowlarr - Indexer manager
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
+  profiles: [core]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -21,6 +22,7 @@ services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
+  profiles: [core]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -36,6 +38,7 @@ services:
   radarr:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
+  profiles: [core]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -51,6 +54,7 @@ services:
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest
     container_name: lidarr
+  profiles: [extras]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -66,6 +70,7 @@ services:
   readarr:
     image: lscr.io/linuxserver/readarr:develop
     container_name: readarr
+  profiles: [extras]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -81,6 +86,7 @@ services:
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
+  profiles: [torrent]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -99,6 +105,7 @@ services:
   nzbget:
     image: lscr.io/linuxserver/nzbget:latest
     container_name: nzbget
+  profiles: [usenet]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -114,6 +121,7 @@ services:
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
+  profiles: [extras]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -132,6 +140,7 @@ services:
   notifiarr:
     image: golift/notifiarr:latest
     container_name: notifiarr
+  profiles: [extras]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -146,6 +155,7 @@ services:
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
     container_name: jellyseerr
+  profiles: [extras]
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -160,6 +170,7 @@ services:
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
+  profiles: [extras]
     environment:
       - LOG_LEVEL=info
       - LOG_HTML=false
@@ -171,5 +182,4 @@ services:
 
 networks:
   default:
-    name: ${NETWORK_NAME:-servarr}
-[...existing code...]
+  name: ${NETWORK_NAME:-servarr}
