@@ -1,0 +1,175 @@
+---
+# *arr Stack Docker Compose Configuration - VM Ready
+# This version is designed for fresh VMs and includes local storage fallback
+
+services:
+  # Prowlarr - Indexer manager
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "${PROWLARR_PORT:-9696}:9696"
+    restart: unless-stopped
+
+  # Sonarr - TV Series management
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/sonarr:/config
+      - ${DATA_PATH:-./data}:/data
+    ports:
+      - "${SONARR_PORT:-8989}:8989"
+    restart: unless-stopped
+
+  # Radarr - Movie management
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/radarr:/config
+      - ${DATA_PATH:-./data}:/data
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
+    restart: unless-stopped
+
+  # Lidarr - Music management
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/lidarr:/config
+      - ${DATA_PATH:-./data}:/data
+    ports:
+      - "${LIDARR_PORT:-8686}:8686"
+    restart: unless-stopped
+
+  # Readarr - Book management
+  readarr:
+    image: lscr.io/linuxserver/readarr:develop
+    container_name: readarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/readarr:/config
+      - ${DATA_PATH:-./data}:/data
+    ports:
+      - "${READARR_PORT:-8787}:8787"
+    restart: unless-stopped
+
+  # qBittorrent - Download client
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+      - WEBUI_PORT=${QBITTORRENT_PORT:-8080}
+    volumes:
+      - ./config/qbittorrent:/config
+      - ${DATA_PATH:-./data}/torrents:/downloads
+    ports:
+      - "${QBITTORRENT_PORT:-8080}:8080"
+      - "${QBITTORRENT_LISTEN_PORT:-6881}:6881"
+      - "${QBITTORRENT_LISTEN_PORT:-6881}:6881/udp"
+    restart: unless-stopped
+
+  # NZBGet - Usenet download client
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:latest
+    container_name: nzbget
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/nzbget:/config
+      - ${DATA_PATH:-./data}/usenet:/downloads
+    ports:
+      - "${NZBGET_PORT:-6789}:6789"
+    restart: unless-stopped
+
+  # Bazarr - Subtitle management
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/bazarr:/config
+      - ${DATA_PATH:-./data}:/data
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
+    restart: unless-stopped
+    depends_on:
+      - sonarr
+      - radarr
+
+  # Notifiarr - Notification system
+  notifiarr:
+    image: golift/notifiarr:latest
+    container_name: notifiarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/notifiarr:/config
+    ports:
+      - "${NOTIFIARR_PORT:-5454}:5454"
+    restart: unless-stopped
+
+  # Jellyseerr - Media request management for Jellyfin
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./config/jellyseerr:/app/config
+    ports:
+      - "${JELLYSEERR_PORT:-5055}:5055"
+    restart: unless-stopped
+
+  # Flaresolverr - Cloudflare bypass
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "${FLARESOLVERR_PORT:-8191}:8191"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: ${NETWORK_NAME:-servarr}
+[...existing code...]
