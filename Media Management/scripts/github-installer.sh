@@ -225,17 +225,17 @@ run_quick_install() {
     step "Starting Quick Installation..."
     cd "$INSTALL_DIR/$MEDIA_PATH/scripts"
     
-    # Check if Docker is already installed (might have been installed by our function)
+    # Check if Docker is installed and working
     if ! command -v docker >/dev/null 2>&1; then
-        error "Docker is not available. This should not happen at this point."
+        error "Docker is not available. Please install Docker first."
         return 1
     fi
     
-    step "Running setup scripts..."
+    success "Docker is available - proceeding with setup"
     
-    # Run the individual scripts instead of quick-install.sh to avoid Docker reinstall
+    # Run individual scripts, skipping Docker installation
+    step "Step 2: Set up TRASHguides folder structure"
     if [ -f "setup-arr-folders.sh" ]; then
-        step "Setting up folder structure..."
         if [[ -t 0 ]]; then
             read -p "Run folder setup? [Y/n]: " run_setup
             run_setup=${run_setup,,}
@@ -245,13 +245,18 @@ run_quick_install() {
         fi
         
         if [[ ! "$run_setup" =~ ^n(o)?$ ]]; then
+            chmod +x setup-arr-folders.sh
             ./setup-arr-folders.sh
-            success "Folder setup completed"
+            success "setup-arr-folders.sh completed."
+        else
+            warn "Skipping setup-arr-folders.sh."
         fi
+    else
+        error "setup-arr-folders.sh not found!"
     fi
     
+    step "Step 3: Create directories on NFS host (if needed)"
     if [ -f "create-nfs-dirs.sh" ]; then
-        step "Creating NFS directories (if needed)..."
         if [[ -t 0 ]]; then
             read -p "Run NFS directory creation? [Y/n]: " run_nfs
             run_nfs=${run_nfs,,}
@@ -261,13 +266,18 @@ run_quick_install() {
         fi
         
         if [[ ! "$run_nfs" =~ ^n(o)?$ ]]; then
+            chmod +x create-nfs-dirs.sh
             ./create-nfs-dirs.sh
-            success "NFS directories created"
+            success "create-nfs-dirs.sh completed."
+        else
+            warn "Skipping create-nfs-dirs.sh."
         fi
+    else
+        error "create-nfs-dirs.sh not found!"
     fi
     
+    step "Step 4: Customize your stack and generate docker-compose file"
     if [ -f "customize-arr-install.sh" ]; then
-        step "Customizing stack and generating docker-compose..."
         if [[ -t 0 ]]; then
             read -p "Run stack customization? [Y/n]: " run_custom
             run_custom=${run_custom,,}
@@ -277,15 +287,22 @@ run_quick_install() {
         fi
         
         if [[ ! "$run_custom" =~ ^n(o)?$ ]]; then
+            chmod +x customize-arr-install.sh
             ./customize-arr-install.sh
-            success "Stack customization completed"
+            success "customize-arr-install.sh completed."
+        else
+            warn "Skipping customize-arr-install.sh."
         fi
+    else
+        error "customize-arr-install.sh not found!"
     fi
     
-    step "Quick installation completed!"
+    step "Step 5: Manage your stack"
     echo -e "${YELLOW}You can now use the management script to start, stop, and monitor your stack.${NC}"
     echo -e "${BLUE}To manage your stack, run:${NC}"
-    echo -e "  ${GREEN}cd $INSTALL_DIR/$MEDIA_PATH/scripts && ./manage.sh [start|stop|status|logs|vpn-status]${NC}"
+    echo -e "  ${GREEN}cd '$INSTALL_DIR/$MEDIA_PATH/scripts' && ./manage.sh [start|stop|status|logs|vpn-status]${NC}"
+    
+    success "Quick install complete!"
 }
 
 run_custom_install() {
