@@ -10,21 +10,40 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 
 ## 🚀 Quick Start
 
+### Option 1: One-Line GitHub Install (Recommended)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/install.sh | bash
+```
+
+### Option 2: Interactive GitHub Installer
+
+```bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/github-installer.sh | bash
+```
+
+### Option 3: Manual Setup (if you already have the files)
+
 1. **Initial Setup** (requires sudo for NFS mounting):
+
    ```bash
    sudo ./setup.sh
    ```
 
 2. **Start Services**:
+
    ```bash
    ./manage.sh start
    ```
+
    On Windows PowerShell:
+
    ```powershell
    ./manage.ps1 start
    ```
 
 3. **Check Status**:
+
    ```bash
    ./manage.sh status
    ```
