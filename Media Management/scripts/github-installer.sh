@@ -32,6 +32,17 @@ show_banner() {
 install_docker_system() {
     step "Installing Docker..."
     
+    # Check for sudo/root permissions first
+    if [ "$EUID" -ne 0 ]; then
+        step "Docker installation requires sudo privileges"
+        warn "The script will now use sudo for Docker installation commands"
+        
+        # Test sudo access
+        if ! sudo -n true 2>/dev/null; then
+            echo -e "${YELLOW}Please enter your sudo password when prompted:${NC}"
+        fi
+    fi
+    
     # Detect Linux distribution
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -41,34 +52,29 @@ install_docker_system() {
         return 1
     fi
     
-    # Check for sudo/root
-    if [ "$EUID" -ne 0 ]; then
-        step "Docker installation requires sudo privileges"
-    fi
-    
     case "$DISTRO" in
         ubuntu|debian)
             step "Installing Docker on Ubuntu/Debian..."
-            sudo apt-get update
+            sudo apt-get update || { error "Failed to update package list"; return 1; }
             sudo apt-get remove docker docker-engine docker.io containerd runc -y 2>/dev/null || true
-            sudo apt-get install -y ca-certificates curl gnupg lsb-release
+            sudo apt-get install -y ca-certificates curl gnupg lsb-release || { error "Failed to install prerequisites"; return 1; }
             sudo mkdir -p /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg || { error "Failed to add Docker GPG key"; return 1; }
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | \
                 sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-            sudo apt-get update
-            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+            sudo apt-get update || { error "Failed to update package list with Docker repo"; return 1; }
+            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || { error "Failed to install Docker"; return 1; }
             ;;
         centos|rhel|fedora)
             step "Installing Docker on CentOS/RHEL/Fedora..."
             sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine 2>/dev/null || true
-            sudo dnf -y install dnf-plugins-core
-            sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo
-            sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+            sudo dnf -y install dnf-plugins-core || { error "Failed to install dnf plugins"; return 1; }
+            sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo || { error "Failed to add Docker repo"; return 1; }
+            sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || { error "Failed to install Docker"; return 1; }
             ;;
         arch)
             step "Installing Docker on Arch Linux..."
-            sudo pacman -Sy --noconfirm docker docker-compose
+            sudo pacman -Sy --noconfirm docker docker-compose || { error "Failed to install Docker"; return 1; }
             ;;
         *)
             error "Unsupported distribution: $DISTRO"
@@ -78,25 +84,32 @@ install_docker_system() {
     esac
     
     # Post-install configuration
+    step "Configuring Docker..."
     sudo groupadd docker 2>/dev/null || true
-    sudo usermod -aG docker "$USER"
-    sudo systemctl enable docker
-    sudo systemctl start docker
+    sudo usermod -aG docker "$USER" || { error "Failed to add user to docker group"; return 1; }
+    sudo systemctl enable docker || { error "Failed to enable Docker service"; return 1; }
+    sudo systemctl start docker || { error "Failed to start Docker service"; return 1; }
+    
+    # Wait for Docker to be ready
+    step "Waiting for Docker to be ready..."
+    sleep 3
     
     # Test Docker installation
-    if docker --version >/dev/null 2>&1; then
+    if command -v docker >/dev/null 2>&1; then
         success "Docker installed successfully!"
-        warn "You may need to log out and back in for Docker group permissions to take effect"
         
-        # Try to run a test container
+        # Try to run a test container with current user (might fail due to group permissions)
         if docker run --rm hello-world >/dev/null 2>&1; then
             success "Docker is working correctly"
         else
-            warn "Docker installed but may need group permission refresh"
-            echo -e "${YELLOW}If you get permission errors, try:${NC}"
-            echo "  newgrp docker"
-            echo "  Or log out and back in"
+            warn "Docker installed but group permissions need refresh"
+            echo -e "${YELLOW}Docker group permissions will be active after you log out and back in.${NC}"
+            echo -e "${YELLOW}For immediate use, you can run: newgrp docker${NC}"
+            echo -e "${YELLOW}Or continue - the setup scripts will use sudo when needed.${NC}"
         fi
+        
+        # Show Docker version
+        docker --version 2>/dev/null || sudo docker --version
     else
         error "Docker installation failed"
         return 1
@@ -212,12 +225,67 @@ run_quick_install() {
     step "Starting Quick Installation..."
     cd "$INSTALL_DIR/$MEDIA_PATH/scripts"
     
-    if [ -f "quick-install.sh" ]; then
-        ./quick-install.sh
-    else
-        error "Quick install script not found!"
+    # Check if Docker is already installed (might have been installed by our function)
+    if ! command -v docker >/dev/null 2>&1; then
+        error "Docker is not available. This should not happen at this point."
         return 1
     fi
+    
+    step "Running setup scripts..."
+    
+    # Run the individual scripts instead of quick-install.sh to avoid Docker reinstall
+    if [ -f "setup-arr-folders.sh" ]; then
+        step "Setting up folder structure..."
+        if [[ -t 0 ]]; then
+            read -p "Run folder setup? [Y/n]: " run_setup
+            run_setup=${run_setup,,}
+        else
+            warn "Auto-running folder setup"
+            run_setup="y"
+        fi
+        
+        if [[ ! "$run_setup" =~ ^n(o)?$ ]]; then
+            ./setup-arr-folders.sh
+            success "Folder setup completed"
+        fi
+    fi
+    
+    if [ -f "create-nfs-dirs.sh" ]; then
+        step "Creating NFS directories (if needed)..."
+        if [[ -t 0 ]]; then
+            read -p "Run NFS directory creation? [Y/n]: " run_nfs
+            run_nfs=${run_nfs,,}
+        else
+            warn "Auto-running NFS directory creation"
+            run_nfs="y"
+        fi
+        
+        if [[ ! "$run_nfs" =~ ^n(o)?$ ]]; then
+            ./create-nfs-dirs.sh
+            success "NFS directories created"
+        fi
+    fi
+    
+    if [ -f "customize-arr-install.sh" ]; then
+        step "Customizing stack and generating docker-compose..."
+        if [[ -t 0 ]]; then
+            read -p "Run stack customization? [Y/n]: " run_custom
+            run_custom=${run_custom,,}
+        else
+            warn "Auto-running stack customization"
+            run_custom="y"
+        fi
+        
+        if [[ ! "$run_custom" =~ ^n(o)?$ ]]; then
+            ./customize-arr-install.sh
+            success "Stack customization completed"
+        fi
+    fi
+    
+    step "Quick installation completed!"
+    echo -e "${YELLOW}You can now use the management script to start, stop, and monitor your stack.${NC}"
+    echo -e "${BLUE}To manage your stack, run:${NC}"
+    echo -e "  ${GREEN}cd $INSTALL_DIR/$MEDIA_PATH/scripts && ./manage.sh [start|stop|status|logs|vpn-status]${NC}"
 }
 
 run_custom_install() {
