@@ -116,8 +116,16 @@ check_requirements() {
     # Check if Docker is installed
     if ! command -v docker >/dev/null 2>&1; then
         warn "Docker is not installed"
-        read -p "Would you like to install Docker automatically? [Y/n]: " install_docker
-        install_docker=${install_docker,,}
+        
+        # Check if we're in an interactive session
+        if [[ -t 0 ]]; then
+            read -p "Would you like to install Docker automatically? [Y/n]: " install_docker
+            install_docker=${install_docker,,}
+        else
+            warn "Running in non-interactive mode - will install Docker automatically"
+            install_docker="y"
+        fi
+        
         if [[ ! "$install_docker" =~ ^n(o)?$ ]]; then
             install_docker_system
         else
@@ -126,10 +134,16 @@ check_requirements() {
     else
         success "Docker is already installed"
         # Check if Docker service is running
-        if ! systemctl is-active --quiet docker; then
+        if ! systemctl is-active --quiet docker 2>/dev/null; then
             warn "Docker service is not running"
-            read -p "Would you like to start Docker service? [Y/n]: " start_docker
-            start_docker=${start_docker,,}
+            if [[ -t 0 ]]; then
+                read -p "Would you like to start Docker service? [Y/n]: " start_docker
+                start_docker=${start_docker,,}
+            else
+                warn "Auto-starting Docker service"
+                start_docker="y"
+            fi
+            
             if [[ ! "$start_docker" =~ ^n(o)?$ ]]; then
                 sudo systemctl start docker
                 sudo systemctl enable docker
@@ -266,18 +280,31 @@ show_documentation() {
 }
 
 cleanup() {
-    read -p "Remove downloaded files? [y/N]: " cleanup_choice
-    if [[ "$cleanup_choice" =~ ^[Yy] ]]; then
-        rm -rf "$INSTALL_DIR"
-        success "Cleanup completed"
+    if [[ -t 0 ]]; then
+        read -p "Remove downloaded files? [y/N]: " cleanup_choice
+        if [[ "$cleanup_choice" =~ ^[Yy] ]]; then
+            rm -rf "$INSTALL_DIR"
+            success "Cleanup completed"
+        else
+            warn "Files kept in: $PWD/$INSTALL_DIR"
+        fi
     else
-        warn "Files kept in: $PWD/$INSTALL_DIR"
+        warn "Auto-cleanup: keeping downloaded files at: $PWD/$INSTALL_DIR"
     fi
 }
 
 main() {
     show_banner
     check_requirements
+    
+    # Check if running in non-interactive mode (piped from curl)
+    if [[ ! -t 0 ]]; then
+        warn "Running in non-interactive mode - starting Quick Install automatically"
+        download_repository
+        run_quick_install
+        success "Installation completed!"
+        return 0
+    fi
     
     while true; do
         show_options
