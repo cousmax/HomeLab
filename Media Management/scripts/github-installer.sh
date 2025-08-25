@@ -120,6 +120,17 @@ check_requirements() {
     step "Checking system requirements..."
     local missing=()
     
+    # First, ensure we can use sudo if needed
+    step "Verifying sudo access for setup scripts..."
+    if ! sudo -n true 2>/dev/null; then
+        warn "Some setup scripts require sudo privileges. Please enter your password:"
+        sudo -v || {
+            error "Sudo access required for NFS mounting and directory operations"
+            exit 1
+        }
+    fi
+    success "Sudo access confirmed"
+    
     for tool in curl git; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             missing+=("$tool")

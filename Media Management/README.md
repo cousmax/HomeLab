@@ -3,6 +3,7 @@
 A complete media automation stack using Docker Compose, configured with TRASHguides best practices, NFS storage from TrueNAS, and AirVPN protection for download clients.
 
 ## ✅ Current Status
+
 - **Docker Stack**: ✅ Working
 - **VPN Routing**: ✅ Handled by router
 - **NFS Storage**: ✅ Mounted from TrueNAS (10.84.2.60)
@@ -12,37 +13,31 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 
 ### Option 1: One-Line GitHub Install (Recommended)
 
+This method automatically handles Docker installation and sudo permissions properly:
+
 ```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/install.sh | bash
 ```
 
 ### Option 2: Interactive GitHub Installer
 
-```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/github-installer.sh | bash
-```
-
-## ✅ Current Status
-- **Docker Stack**: ✅ Working
-- **VPN Routing**: ✅ Handled by router
-- **NFS Storage**: ✅ Mounted from TrueNAS (10.84.2.60)
-- **All Services**: ✅ Running and accessible
-
-## 🚀 Quick Start
-
-### Option 1: One-Line GitHub Install (Recommended)
+For a menu-driven installation experience:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/github-installer.sh | bash
 ```
 
-### Option 2: Interactive GitHub Installer
+### Option 3: Manual Download & Install
+
+If you prefer to download first, then execute:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/github-installer.sh | bash
+wget https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/github-installer.sh -O installer.sh
+chmod +x installer.sh
+./installer.sh
 ```
 
-### Option 3: Manual Setup (if you already have the files)
+### Option 4: Manual Setup (if you already have the files)
 
 1. **Initial Setup** (requires sudo for NFS mounting):
 
@@ -59,6 +54,14 @@ curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Managem
    On Windows PowerShell:
 
    ```powershell
+   ./manage.ps1 start
+   ```
+
+3. **Check Status**:
+
+   ```bash
+   ./manage.sh status
+   ```
    ./manage.ps1 start
    ```
 
