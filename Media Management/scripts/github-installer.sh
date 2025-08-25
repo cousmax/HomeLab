@@ -29,15 +29,114 @@ show_banner() {
     echo -e "${NC}"
 }
 
+install_docker_system() {
+    step "Installing Docker..."
+    
+    # Detect Linux distribution
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        DISTRO=$ID
+    else
+        error "Cannot detect Linux distribution"
+        return 1
+    fi
+    
+    # Check for sudo/root
+    if [ "$EUID" -ne 0 ]; then
+        step "Docker installation requires sudo privileges"
+    fi
+    
+    case "$DISTRO" in
+        ubuntu|debian)
+            step "Installing Docker on Ubuntu/Debian..."
+            sudo apt-get update
+            sudo apt-get remove docker docker-engine docker.io containerd runc -y 2>/dev/null || true
+            sudo apt-get install -y ca-certificates curl gnupg lsb-release
+            sudo mkdir -p /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | \
+                sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            sudo apt-get update
+            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+            ;;
+        centos|rhel|fedora)
+            step "Installing Docker on CentOS/RHEL/Fedora..."
+            sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine 2>/dev/null || true
+            sudo dnf -y install dnf-plugins-core
+            sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo
+            sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+            ;;
+        arch)
+            step "Installing Docker on Arch Linux..."
+            sudo pacman -Sy --noconfirm docker docker-compose
+            ;;
+        *)
+            error "Unsupported distribution: $DISTRO"
+            warn "Please install Docker manually from https://docs.docker.com/engine/install/"
+            return 1
+            ;;
+    esac
+    
+    # Post-install configuration
+    sudo groupadd docker 2>/dev/null || true
+    sudo usermod -aG docker "$USER"
+    sudo systemctl enable docker
+    sudo systemctl start docker
+    
+    # Test Docker installation
+    if docker --version >/dev/null 2>&1; then
+        success "Docker installed successfully!"
+        warn "You may need to log out and back in for Docker group permissions to take effect"
+        
+        # Try to run a test container
+        if docker run --rm hello-world >/dev/null 2>&1; then
+            success "Docker is working correctly"
+        else
+            warn "Docker installed but may need group permission refresh"
+            echo -e "${YELLOW}If you get permission errors, try:${NC}"
+            echo "  newgrp docker"
+            echo "  Or log out and back in"
+        fi
+    else
+        error "Docker installation failed"
+        return 1
+    fi
+}
+
 check_requirements() {
     step "Checking system requirements..."
     local missing=()
     
-    for tool in curl git docker; do
+    for tool in curl git; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             missing+=("$tool")
         fi
     done
+    
+    # Check if Docker is installed
+    if ! command -v docker >/dev/null 2>&1; then
+        warn "Docker is not installed"
+        read -p "Would you like to install Docker automatically? [Y/n]: " install_docker
+        install_docker=${install_docker,,}
+        if [[ ! "$install_docker" =~ ^n(o)?$ ]]; then
+            install_docker_system
+        else
+            missing+=("docker")
+        fi
+    else
+        success "Docker is already installed"
+        # Check if Docker service is running
+        if ! systemctl is-active --quiet docker; then
+            warn "Docker service is not running"
+            read -p "Would you like to start Docker service? [Y/n]: " start_docker
+            start_docker=${start_docker,,}
+            if [[ ! "$start_docker" =~ ^n(o)?$ ]]; then
+                sudo systemctl start docker
+                sudo systemctl enable docker
+                success "Docker service started"
+            fi
+        fi
+    fi
     
     if [ ${#missing[@]} -gt 0 ]; then
         error "Missing required tools: ${missing[*]}"
@@ -45,9 +144,9 @@ check_requirements() {
         
         if [[ "$OSTYPE" == "linux-gnu"* ]]; then
             echo -e "${YELLOW}On Ubuntu/Debian, run:${NC}"
-            echo "  sudo apt update && sudo apt install -y curl git docker.io"
+            echo "  sudo apt update && sudo apt install -y curl git"
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}On macOS, install Docker Desktop and run:${NC}"
+            echo -e "${YELLOW}On macOS, run:${NC}"
             echo "  brew install git curl"
         fi
         exit 1
@@ -82,13 +181,16 @@ show_options() {
     echo -e "${GREEN}2.${NC} Custom Install"
     echo -e "   ${YELLOW}→${NC} Manual step-by-step installation"
     echo
-    echo -e "${GREEN}3.${NC} Update Existing Setup"
+    echo -e "${GREEN}3.${NC} Install Docker Only"
+    echo -e "   ${YELLOW}→${NC} Install Docker if not already present"
+    echo
+    echo -e "${GREEN}4.${NC} Update Existing Setup"
     echo -e "   ${YELLOW}→${NC} Update existing media management stack"
     echo
-    echo -e "${GREEN}4.${NC} View Documentation"
+    echo -e "${GREEN}5.${NC} View Documentation"
     echo -e "   ${YELLOW}→${NC} Open guides and configuration help"
     echo
-    echo -e "${GREEN}5.${NC} Exit"
+    echo -e "${GREEN}6.${NC} Exit"
     echo
 }
 
@@ -179,7 +281,7 @@ main() {
     
     while true; do
         show_options
-        read -p "Select an option (1-5): " choice
+        read -p "Select an option (1-6): " choice
         echo
         
         case $choice in
@@ -193,19 +295,22 @@ main() {
                 run_custom_install
                 ;;
             3)
-                update_setup
+                install_docker_system
                 ;;
             4)
+                update_setup
+                ;;
+            5)
                 download_repository
                 show_documentation
                 ;;
-            5)
+            6)
                 step "Exiting..."
                 cleanup
                 exit 0
                 ;;
             *)
-                error "Invalid choice. Please select 1-5."
+                error "Invalid choice. Please select 1-6."
                 ;;
         esac
         echo
