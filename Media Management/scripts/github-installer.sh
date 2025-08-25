@@ -244,13 +244,20 @@ run_quick_install() {
             read -p "Run folder setup? [Y/n]: " run_setup
             run_setup=${run_setup,,}
         else
-            warn "Auto-running folder setup"
+            warn "Auto-running folder setup (may require sudo password)"
             run_setup="y"
         fi
         
         if [[ ! "$run_setup" =~ ^n(o)?$ ]]; then
             chmod +x setup-arr-folders.sh
-            ./setup-arr-folders.sh
+            
+            # Check if script needs sudo by looking for common sudo requirements
+            if grep -q "mount\|mkdir.*\/mnt\|chown\|chmod.*\/mnt" setup-arr-folders.sh 2>/dev/null; then
+                warn "This script requires sudo privileges for NFS mounting and directory creation"
+                sudo ./setup-arr-folders.sh
+            else
+                ./setup-arr-folders.sh
+            fi
             success "setup-arr-folders.sh completed."
         else
             warn "Skipping setup-arr-folders.sh."
@@ -265,13 +272,20 @@ run_quick_install() {
             read -p "Run NFS directory creation? [Y/n]: " run_nfs
             run_nfs=${run_nfs,,}
         else
-            warn "Auto-running NFS directory creation"
+            warn "Auto-running NFS directory creation (may require sudo password)"
             run_nfs="y"
         fi
         
         if [[ ! "$run_nfs" =~ ^n(o)?$ ]]; then
             chmod +x create-nfs-dirs.sh
-            ./create-nfs-dirs.sh
+            
+            # Check if script needs sudo
+            if grep -q "mount\|mkdir.*\/mnt\|chown\|chmod.*\/mnt\|ssh.*mkdir" create-nfs-dirs.sh 2>/dev/null; then
+                warn "This script requires sudo privileges for NFS operations"
+                sudo ./create-nfs-dirs.sh
+            else
+                ./create-nfs-dirs.sh
+            fi
             success "create-nfs-dirs.sh completed."
         else
             warn "Skipping create-nfs-dirs.sh."
@@ -292,6 +306,7 @@ run_quick_install() {
         
         if [[ ! "$run_custom" =~ ^n(o)?$ ]]; then
             chmod +x customize-arr-install.sh
+            # This script usually doesn't need sudo
             ./customize-arr-install.sh
             success "customize-arr-install.sh completed."
         else
