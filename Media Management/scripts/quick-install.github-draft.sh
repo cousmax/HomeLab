@@ -8,9 +8,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-REPO_URL="https://github.com/YOUR_GITHUB_USER/YOUR_REPO_NAME"
+REPO_URL="https://github.com/cousmax/HomeLab"
 BRANCH="main"
-SCRIPTS_DIR="homelab-media-management-scripts"
+SCRIPTS_DIR="HomeLab-temp"
+MEDIA_SCRIPTS_PATH="Media Management/scripts"
 
 step() { echo -e "${BLUE}$1${NC}"; }
 success() { echo -e "${GREEN}$1${NC}"; }
@@ -33,25 +34,32 @@ check_requirements() {
 
 download_scripts() {
 	if [ ! -d "$SCRIPTS_DIR" ]; then
-		step "Cloning scripts from GitHub..."
+		step "Cloning HomeLab repository from GitHub..."
 		git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$SCRIPTS_DIR" || {
-			error "Failed to clone repo!"
+			error "Failed to clone repository!"
 			exit 1
 		}
-		chmod +x "$SCRIPTS_DIR"/*.sh
-		success "Scripts downloaded."
+		# Make scripts executable
+		find "$SCRIPTS_DIR/$MEDIA_SCRIPTS_PATH" -name "*.sh" -exec chmod +x {} \;
+		success "HomeLab repository cloned and scripts prepared."
 	else
-		success "Scripts already downloaded."
+		step "Updating existing repository..."
+		cd "$SCRIPTS_DIR" && git pull origin "$BRANCH" && cd ..
+		find "$SCRIPTS_DIR/$MEDIA_SCRIPTS_PATH" -name "*.sh" -exec chmod +x {} \;
+		success "Repository updated."
 	fi
 }
 
 run_script() {
 	local script="$1"
 	local desc="$2"
-	if [ ! -f "$SCRIPTS_DIR/$script" ]; then
-		error "Script $script not found!"
+	local script_path="$SCRIPTS_DIR/$MEDIA_SCRIPTS_PATH/$script"
+	
+	if [ ! -f "$script_path" ]; then
+		error "Script $script not found at $script_path!"
 		return 1
 	fi
+	
 	step "$desc"
 	read -p "Run $script now? [Y/n]: " CONFIRM
 	CONFIRM=${CONFIRM,,}
@@ -59,7 +67,11 @@ run_script() {
 		warn "Skipping $script."
 		return 0
 	fi
-	bash "$SCRIPTS_DIR/$script"
+	
+	# Run script from its proper directory
+	cd "$SCRIPTS_DIR/$MEDIA_SCRIPTS_PATH"
+	bash "./$script"
+	cd - > /dev/null
 	success "$script completed."
 }
 
@@ -75,6 +87,16 @@ run_script "customize-arr-install.sh" "Step 4: Customize your stack and generate
 step "Step 5: Manage your stack."
 echo -e "${YELLOW}You can now use the management script to start, stop, and monitor your stack.${NC}"
 echo -e "${BLUE}To manage your stack, run:${NC}"
-echo -e "  ${GREEN}bash $SCRIPTS_DIR/manage.sh [start|stop|status|logs|vpn-status|...etc]${NC}"
+echo -e "  ${GREEN}bash $SCRIPTS_DIR/$MEDIA_SCRIPTS_PATH/manage.sh [start|stop|status|logs|vpn-status|...etc]${NC}"
+
+step "Cleanup (optional)."
+read -p "Remove downloaded repository folder? [y/N]: " CLEANUP
+CLEANUP=${CLEANUP,,}
+if [[ "$CLEANUP" == "y" || "$CLEANUP" == "yes" ]]; then
+	rm -rf "$SCRIPTS_DIR"
+	success "Cleanup completed."
+else
+	warn "Repository folder kept at: $SCRIPTS_DIR"
+fi
 
 success "Quick install complete!"
