@@ -13,6 +13,26 @@ A complete media automation stack using Docker Compose, configured with TRASHgui
 ### Option 1: One-Line GitHub Install (Recommended)
 
 ```bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/install.sh | bash
+```
+
+### Option 2: Interactive GitHub Installer
+
+```bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/github-installer.sh | bash
+```
+
+## ✅ Current Status
+- **Docker Stack**: ✅ Working
+- **VPN Routing**: ✅ Handled by router
+- **NFS Storage**: ✅ Mounted from TrueNAS (10.84.2.60)
+- **All Services**: ✅ Running and accessible
+
+## 🚀 Quick Start
+
+### Option 1: One-Line GitHub Install (Recommended)
+
+```bash
 curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/install.sh | bash
 ```
 

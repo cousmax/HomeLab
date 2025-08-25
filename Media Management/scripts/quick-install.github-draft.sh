@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 REPO_URL="https://github.com/cousmax/HomeLab"
-BRANCH="main"
+BRANCH="Dynamic-Servarr"
 SCRIPTS_DIR="HomeLab-temp"
 MEDIA_SCRIPTS_PATH="Media Management/scripts"
 

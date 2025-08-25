@@ -13,7 +13,7 @@ NC='\033[0m'
 
 # Configuration
 REPO_URL="https://github.com/cousmax/HomeLab"
-BRANCH="main"
+BRANCH="Dynamic-Servarr"
 TEMP_DIR="HomeLab-$(date +%s)"
 
 echo -e "${BLUE}🚀 HomeLab Media Management Quick Installer${NC}"

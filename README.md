@@ -11,13 +11,13 @@ A comprehensive HomeLab automation suite with media management and NextCloud dep
 **Option 1: One-Line Install (Recommended)**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/install.sh | bash
 ```
 
 **Option 2: Interactive Installer**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/github-installer.sh | bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/github-installer.sh | bash
 ```
 
 **Option 3: Manual Clone**
@@ -32,7 +32,7 @@ chmod +x *.sh
 ### NextCloud Deployment
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/main/NextCloud/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/install.sh -o install.sh
 chmod +x install.sh && ./install.sh
 ```
 

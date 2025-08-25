@@ -7,7 +7,7 @@ Automated installation scripts for Docker and Nextcloud All-in-One (AIO) with NF
 ### Option 1: Download and Run (Recommended)
 ```bash
 # Download the installer
-curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/main/NextCloud/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/install.sh -o install.sh
 
 # Make it executable and run
 chmod +x install.sh && ./install.sh
@@ -15,13 +15,13 @@ chmod +x install.sh && ./install.sh
 
 ### Option 2: One-Line Install
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/main/NextCloud/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/install.sh | bash
 ```
 
 ### Option 3: VM Deployment Script
 ```bash
 # Download and run the VM deployment script
-curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/main/NextCloud/deploy-vm.sh -o deploy.sh
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/deploy-vm.sh -o deploy.sh
 chmod +x deploy.sh && ./deploy.sh
 ```
 
