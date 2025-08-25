@@ -1,35 +1,41 @@
+#!/bin/bash
+# create-nfs-dirs.sh: Create TRASHguides *arr folders directly on NFS host
+set -e
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
-if [ "$EUID" -ne 0 ]; then
-	echo -e "${RED}Error: Please run as root or with sudo.${NC}"
-	exit 1
-fi
 
-if ! [ -w "$NFS_SHARE" ]; then
-	echo -e "${RED}Error: No write access to $NFS_SHARE.${NC}"
-	read -p "Do you want to attempt to fix permissions for $NFS_SHARE automatically? [y/N]: " FIX
-	FIX=${FIX,,}
-	if [[ "$FIX" == "y" || "$FIX" == "yes" ]]; then
-		sudo chown -R $USER:$USER "$NFS_SHARE"
-		sudo chmod -R 775 "$NFS_SHARE"
-		if ! [ -w "$NFS_SHARE" ]; then
-	echo -e "${RED}Automatic fix failed. Please fix manually.${NC}"
-			exit 2
-		fi
-	else
-	echo -e "${YELLOW}Please fix permissions manually and re-run the script.${NC}"
-		exit 2
-	fi
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error: Please run as root or with sudo.${NC}"
+    exit 1
 fi
-#!/bin/bash
-# create-nfs-dirs.sh: Create TRASHguides *arr folders directly on NFS host
-set -e
 
 # Set this to your NFS share root (e.g., /mnt/Pool1/MediaData)
-NFS_SHARE="/mnt/Pool1/MediaData"
+DEFAULT_NFS_SHARE="/mnt/Pool1/MediaData"
+read -p "Enter NFS share path (default: $DEFAULT_NFS_SHARE): " NFS_SHARE
+NFS_SHARE=${NFS_SHARE:-$DEFAULT_NFS_SHARE}
+
+# Check write access
+if ! [ -w "$NFS_SHARE" ]; then
+    echo -e "${RED}Error: No write access to $NFS_SHARE.${NC}"
+    read -p "Do you want to attempt to fix permissions for $NFS_SHARE automatically? [y/N]: " FIX
+    FIX=${FIX,,}
+    if [[ "$FIX" == "y" || "$FIX" == "yes" ]]; then
+        chown -R $USER:$USER "$NFS_SHARE"
+        chmod -R 775 "$NFS_SHARE"
+        if ! [ -w "$NFS_SHARE" ]; then
+            echo -e "${RED}Automatic fix failed. Please fix manually.${NC}"
+            exit 2
+        fi
+    else
+        echo -e "${YELLOW}Please fix permissions manually and re-run the script.${NC}"
+        exit 2
+    fi
+fi
 
 # Media library folders
 mkdir -p "$NFS_SHARE/media/movies"
@@ -58,4 +64,4 @@ echo "- Media:      $NFS_SHARE/media/{movies,tv,music,books,audiobooks}"
 echo "- Torrents:   $NFS_SHARE/torrents/{movies,tv,music,books,audiobooks,incomplete,watch}"
 echo "- Usenet:     $NFS_SHARE/usenet/{complete,incomplete,intermediate}"
 echo -e "${YELLOW}You may want to set ownership/permissions:${NC}"
-echo "  sudo chown -R <youruser>:<yourgroup> $NFS_SHARE"
+echo "  chown -R <youruser>:<yourgroup> $NFS_SHARE"

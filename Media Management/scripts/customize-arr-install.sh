@@ -11,9 +11,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Check if docker-compose.yml exists, if not try to find it in parent directory
 if ! [ -f "$COMPOSE_FILE" ]; then
-	echo "Error: $COMPOSE_FILE not found."
-	exit 1
+    if [ -f "../docker-compose.yml" ]; then
+        echo -e "${YELLOW}Found docker-compose.yml in parent directory, copying...${NC}"
+        cp "../docker-compose.yml" "$COMPOSE_FILE"
+    elif [ -f "../../docker-compose.yml" ]; then
+        echo -e "${YELLOW}Found docker-compose.yml in grandparent directory, copying...${NC}"
+        cp "../../docker-compose.yml" "$COMPOSE_FILE"
+    else
+        echo -e "${RED}Error: $COMPOSE_FILE not found in current, parent, or grandparent directory.${NC}"
+        echo -e "${YELLOW}Please ensure docker-compose.yml is available in the working directory.${NC}"
+        exit 1
+    fi
 fi
 
 # Extract service names from the compose file
