@@ -186,11 +186,15 @@ download_repository() {
     step "Downloading HomeLab repository..."
     
     if [ -d "$INSTALL_DIR" ]; then
-        warn "Directory $INSTALL_DIR already exists. Updating..."
-        cd "$INSTALL_DIR" && git pull origin "$BRANCH" && cd ..
-    else
-        git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+        warn "Directory $INSTALL_DIR already exists. Removing old version..."
+        rm -rf "$INSTALL_DIR"
     fi
+    
+    step "Cloning fresh copy from GitHub..."
+    git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
+        error "Failed to clone repository!"
+        exit 1
+    }
     
     # Make all scripts executable
     find "$INSTALL_DIR" -name "*.sh" -exec chmod +x {} \;
@@ -368,18 +372,32 @@ cleanup() {
     if [[ -t 0 ]]; then
         read -p "Remove downloaded files? [y/N]: " cleanup_choice
         if [[ "$cleanup_choice" =~ ^[Yy] ]]; then
-            rm -rf "$INSTALL_DIR"
-            success "Cleanup completed"
+            if [ -d "$INSTALL_DIR" ]; then
+                rm -rf "$INSTALL_DIR"
+                success "Cleanup completed"
+            fi
         else
-            warn "Files kept in: $PWD/$INSTALL_DIR"
+            if [ -d "$INSTALL_DIR" ]; then
+                warn "Files kept in: $PWD/$INSTALL_DIR"
+            fi
         fi
     else
-        warn "Auto-cleanup: keeping downloaded files at: $PWD/$INSTALL_DIR"
+        if [ -d "$INSTALL_DIR" ]; then
+            warn "Auto-cleanup: keeping downloaded files at: $PWD/$INSTALL_DIR"
+        fi
     fi
 }
 
 main() {
     show_banner
+    
+    # Clean up any existing installations first
+    if [ -d "$INSTALL_DIR" ]; then
+        warn "Found existing installation directory. Cleaning up..."
+        rm -rf "$INSTALL_DIR"
+        success "Old installation cleaned up"
+    fi
+    
     check_requirements
     
     # Check if running in non-interactive mode (piped from curl)
