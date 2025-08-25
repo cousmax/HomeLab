@@ -244,21 +244,22 @@ run_quick_install() {
             read -p "Run folder setup? [Y/n]: " run_setup
             run_setup=${run_setup,,}
         else
-            warn "Auto-running folder setup (may require sudo password)"
+            warn "Auto-running folder setup (requires sudo privileges)"
             run_setup="y"
         fi
         
         if [[ ! "$run_setup" =~ ^n(o)?$ ]]; then
             chmod +x setup-arr-folders.sh
+            warn "This script requires sudo privileges for NFS mounting and directory creation"
+            echo -e "${YELLOW}Please enter your sudo password when prompted:${NC}"
             
-            # Check if script needs sudo by looking for common sudo requirements
-            if grep -q "mount\|mkdir.*\/mnt\|chown\|chmod.*\/mnt" setup-arr-folders.sh 2>/dev/null; then
-                warn "This script requires sudo privileges for NFS mounting and directory creation"
-                sudo ./setup-arr-folders.sh
+            # Run with sudo since the script checks for root
+            if sudo ./setup-arr-folders.sh; then
+                success "setup-arr-folders.sh completed."
             else
-                ./setup-arr-folders.sh
+                error "setup-arr-folders.sh failed. You may need to run it manually."
+                warn "To run manually: cd '$INSTALL_DIR/$MEDIA_PATH/scripts' && sudo ./setup-arr-folders.sh"
             fi
-            success "setup-arr-folders.sh completed."
         else
             warn "Skipping setup-arr-folders.sh."
         fi
@@ -272,26 +273,31 @@ run_quick_install() {
             read -p "Run NFS directory creation? [Y/n]: " run_nfs
             run_nfs=${run_nfs,,}
         else
-            warn "Auto-running NFS directory creation (may require sudo password)"
+            warn "Auto-running NFS directory creation (may require sudo privileges)"
             run_nfs="y"
         fi
         
         if [[ ! "$run_nfs" =~ ^n(o)?$ ]]; then
             chmod +x create-nfs-dirs.sh
             
-            # Check if script needs sudo
-            if grep -q "mount\|mkdir.*\/mnt\|chown\|chmod.*\/mnt\|ssh.*mkdir" create-nfs-dirs.sh 2>/dev/null; then
-                warn "This script requires sudo privileges for NFS operations"
-                sudo ./create-nfs-dirs.sh
+            # Check if this script also requires root
+            if grep -q "EUID.*-ne.*0" create-nfs-dirs.sh 2>/dev/null; then
+                warn "This script requires sudo privileges"
+                echo -e "${YELLOW}Please enter your sudo password when prompted:${NC}"
+                if sudo ./create-nfs-dirs.sh; then
+                    success "create-nfs-dirs.sh completed."
+                else
+                    error "create-nfs-dirs.sh failed. You may need to run it manually."
+                fi
             else
                 ./create-nfs-dirs.sh
+                success "create-nfs-dirs.sh completed."
             fi
-            success "create-nfs-dirs.sh completed."
         else
             warn "Skipping create-nfs-dirs.sh."
         fi
     else
-        error "create-nfs-dirs.sh not found!"
+        warn "create-nfs-dirs.sh not found - this is optional"
     fi
     
     step "Step 4: Customize your stack and generate docker-compose file"
@@ -306,8 +312,14 @@ run_quick_install() {
         
         if [[ ! "$run_custom" =~ ^n(o)?$ ]]; then
             chmod +x customize-arr-install.sh
-            # This script usually doesn't need sudo
-            ./customize-arr-install.sh
+            
+            # This script usually doesn't need sudo, but check to be sure
+            if grep -q "EUID.*-ne.*0" customize-arr-install.sh 2>/dev/null; then
+                warn "This script requires sudo privileges"
+                sudo ./customize-arr-install.sh
+            else
+                ./customize-arr-install.sh
+            fi
             success "customize-arr-install.sh completed."
         else
             warn "Skipping customize-arr-install.sh."
