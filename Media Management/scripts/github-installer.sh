@@ -1,104 +1,184 @@
 #!/bin/bash
-# HomeLab Media Management GitHub Installer
-# Download and run: curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/main/Media%20Management/scripts/github-installer.sh | bash
 
-set -e
+# HomeLab Media Management Installer
+# Inspired by Proxmox Helper Scripts design
+# Author: cousmax
+# License: MIT
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+function header_info {
+clear
+cat <<"EOF"
+    __  __                      __          __  
+   / / / /___  ____ ___  ___   / /   ____ _/ /_ 
+  / /_/ / __ \/ __ `__ \/ _ \ / /   / __ `/ __ \
+ / __  / /_/ / / / / / /  __// /___/ /_/ / /_/ /
+/_/ /_/\____/_/ /_/ /_/\___//_____/\__,_/_.___/ 
+                                               
+EOF
+}
+
+RD='\033[01;31m'
+BL='\033[36m'
+GN='\033[1;92m'
+CL='\033[m'
+YW='\033[33m'
+BFR="\\r\\033[K"
+HOLD="-"
+CM="${GN}✓${CL}"
+CROSS="${RD}✗${CL}"
+INFO="${BL}ⓘ${CL}"
+WARN="${YW}⚠${CL}"
+
+set -Eeuo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+    trap - SIGINT SIGTERM ERR EXIT
+    if [[ -n "${SPINNER_PID-}" ]] && ps -p $SPINNER_PID > /dev/null 2>&1; then
+        kill $SPINNER_PID > /dev/null 2>&1
+    fi
+}
+
+msg_info() {
+    local msg="$1"
+    echo -ne " ${INFO} ${msg}..."
+}
+
+msg_ok() {
+    local msg="$1"
+    echo -e "${BFR} ${CM} ${msg}"
+}
+
+msg_error() {
+    local msg="$1"
+    echo -e "${BFR} ${CROSS} ${msg}"
+}
+
+msg_warn() {
+    local msg="$1"
+    echo -e "${BFR} ${WARN} ${msg}"
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    while ps -p $pid > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
 
 REPO_URL="https://github.com/cousmax/HomeLab"
 BRANCH="Dynamic-Servarr"
 INSTALL_DIR="HomeLab-Media-Setup"
 MEDIA_PATH="Media Management"
 
-step() { echo -e "${BLUE}► $1${NC}"; }
-success() { echo -e "${GREEN}✓ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
-error() { echo -e "${RED}✗ $1${NC}"; }
-
 show_banner() {
-    echo -e "${BLUE}"
-    echo "╔══════════════════════════════════════════════╗"
-    echo "║        HomeLab Media Management Setup        ║"
-    echo "║              GitHub Installer                ║"
-    echo "╚══════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    header_info
+    echo -e " ${BL}Media Management Stack Installer${CL}"
+    echo -e " ${YW}Automated *arr Stack with Docker${CL}"
+    echo
+    echo -e " ${BL}Services:${CL} Prowlarr, Sonarr, Radarr, qBittorrent, NZBGet"
+    echo -e " ${BL}Features:${CL} NFS Storage, VPN Integration, TRASHguides Config"
+    echo -e " ${BL}Platform:${CL} Docker Compose with LinuxServer.io Images"
+    echo
 }
 
 install_docker_system() {
-    step "Installing Docker..."
+    header_info
+    echo -e " ${BL}Docker Installation${CL}"
+    echo
     
     # Check for sudo/root permissions first
     if [ "$EUID" -ne 0 ]; then
-        step "Docker installation requires sudo privileges"
-        warn "The script will now use sudo for Docker installation commands"
-        
-        # Test sudo access
+        msg_info "Checking for sudo privileges"
         if ! sudo -n true 2>/dev/null; then
-            echo -e "${YELLOW}Please enter your sudo password when prompted:${NC}"
+            echo -e "${BFR} ${INFO} Please enter your sudo password when prompted"
         fi
+        msg_ok "Sudo access confirmed"
     fi
     
     # Detect Linux distribution
+    msg_info "Detecting Linux distribution"
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         DISTRO=$ID
+        msg_ok "Distribution detected: $PRETTY_NAME"
     else
-        error "Cannot detect Linux distribution"
-        return 1
+        msg_error "Cannot detect Linux distribution"
+        exit 1
     fi
     
     case "$DISTRO" in
         ubuntu|debian)
-            step "Installing Docker on Ubuntu/Debian..."
-            sudo apt-get update || { error "Failed to update package list"; return 1; }
-            sudo apt-get remove docker docker-engine docker.io containerd runc -y 2>/dev/null || true
-            sudo apt-get install -y ca-certificates curl gnupg lsb-release || { error "Failed to install prerequisites"; return 1; }
-            sudo mkdir -p /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg || { error "Failed to add Docker GPG key"; return 1; }
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | \
-                sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-            sudo apt-get update || { error "Failed to update package list with Docker repo"; return 1; }
-            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || { error "Failed to install Docker"; return 1; }
+            msg_info "Installing Docker on Ubuntu/Debian"
+            (
+                sudo apt-get update -qq >/dev/null 2>&1 &&
+                sudo apt-get remove docker docker-engine docker.io containerd runc -y -qq >/dev/null 2>&1 || true &&
+                sudo apt-get install -y ca-certificates curl gnupg lsb-release -qq >/dev/null 2>&1 &&
+                sudo mkdir -p /etc/apt/keyrings &&
+                curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null &&
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | \
+                    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null &&
+                sudo apt-get update -qq >/dev/null 2>&1 &&
+                sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -qq >/dev/null 2>&1
+            ) &
+            spinner $!
+            wait $! && msg_ok "Docker installed successfully" || { msg_error "Docker installation failed"; exit 1; }
             ;;
         centos|rhel|fedora)
-            step "Installing Docker on CentOS/RHEL/Fedora..."
-            sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine 2>/dev/null || true
-            sudo dnf -y install dnf-plugins-core || { error "Failed to install dnf plugins"; return 1; }
-            sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo || { error "Failed to add Docker repo"; return 1; }
-            sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || { error "Failed to install Docker"; return 1; }
+            msg_info "Installing Docker on CentOS/RHEL/Fedora"
+            (
+                sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine -q >/dev/null 2>&1 || true &&
+                sudo dnf -y install dnf-plugins-core -q >/dev/null 2>&1 &&
+                sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo -q >/dev/null 2>&1 &&
+                sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -q >/dev/null 2>&1
+            ) &
+            spinner $!
+            wait $! && msg_ok "Docker installed successfully" || { msg_error "Docker installation failed"; exit 1; }
             ;;
         arch)
-            step "Installing Docker on Arch Linux..."
-            sudo pacman -Sy --noconfirm docker docker-compose || { error "Failed to install Docker"; return 1; }
+            msg_info "Installing Docker on Arch Linux"
+            (
+                sudo pacman -Sy --noconfirm docker docker-compose >/dev/null 2>&1
+            ) &
+            spinner $!
+            wait $! && msg_ok "Docker installed successfully" || { msg_error "Docker installation failed"; exit 1; }
             ;;
         *)
-            error "Unsupported distribution: $DISTRO"
-            warn "Please install Docker manually from https://docs.docker.com/engine/install/"
-            return 1
+            msg_error "Unsupported distribution: $DISTRO"
+            echo -e " ${WARN} Please install Docker manually from https://docs.docker.com/engine/install/"
+            exit 1
             ;;
     esac
     
     # Post-install configuration
-    step "Configuring Docker..."
-    sudo groupadd docker 2>/dev/null || true
-    sudo usermod -aG docker "$USER" || { error "Failed to add user to docker group"; return 1; }
-    sudo systemctl enable docker || { error "Failed to enable Docker service"; return 1; }
-    sudo systemctl start docker || { error "Failed to start Docker service"; return 1; }
-    
-    # Wait for Docker to be ready
-    step "Waiting for Docker to be ready..."
-    sleep 3
+    msg_info "Configuring Docker service"
+    (
+        sudo groupadd docker 2>/dev/null || true &&
+        sudo usermod -aG docker "$USER" &&
+        sudo systemctl enable docker >/dev/null 2>&1 &&
+        sudo systemctl start docker >/dev/null 2>&1 &&
+        sleep 3
+    ) &
+    spinner $!
+    wait $! && msg_ok "Docker service configured" || { msg_error "Docker configuration failed"; exit 1; }
     
     # Test Docker installation
+    msg_info "Testing Docker installation"
     if command -v docker >/dev/null 2>&1; then
-        success "Docker installed successfully!"
-        
-        # Try to run a test container with current user (might fail due to group permissions)
+        msg_ok "Docker installation completed successfully"
+        echo -e " ${YW} Note: You may need to log out and back in for Docker group changes to take effect${CL}"
+    else
+        msg_error "Docker installation verification failed"
+        exit 1
+    fi
+}
         if docker run --rm hello-world >/dev/null 2>&1; then
             success "Docker is working correctly"
         else
@@ -213,27 +293,26 @@ download_repository() {
 }
 
 show_options() {
-    echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║               Installation Options           ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
+    echo -e " ${YW}Select Installation Option:${CL}"
     echo
-    echo -e "${GREEN}1.${NC} Quick Install (Recommended)"
-    echo -e "   ${YELLOW}→${NC} Automated setup with guided prompts"
+    echo -e " ${GN}[1]${CL} Quick Install ${BL}(Recommended)${CL}"
+    echo -e "     Automated setup with guided prompts"
     echo
-    echo -e "${GREEN}2.${NC} Custom Install"
-    echo -e "   ${YELLOW}→${NC} Manual step-by-step installation"
+    echo -e " ${GN}[2]${CL} Custom Install"
+    echo -e "     Manual step-by-step installation"
     echo
-    echo -e "${GREEN}3.${NC} Install Docker Only"
-    echo -e "   ${YELLOW}→${NC} Install Docker if not already present"
+    echo -e " ${GN}[3]${CL} Install Docker Only"
+    echo -e "     Install Docker if not already present"
     echo
-    echo -e "${GREEN}4.${NC} Update Existing Setup"
-    echo -e "   ${YELLOW}→${NC} Update existing media management stack"
+    echo -e " ${GN}[4]${CL} Update Existing Setup"
+    echo -e "     Update existing media management stack"
     echo
-    echo -e "${GREEN}5.${NC} View Documentation"
-    echo -e "   ${YELLOW}→${NC} Open guides and configuration help"
+    echo -e " ${GN}[5]${CL} View Documentation"
+    echo -e "     Open guides and configuration help"
     echo
-    echo -e "${GREEN}6.${NC} Exit"
+    echo -e " ${GN}[6]${CL} Exit"
     echo
+    echo -ne " ${BL}Please select an option [1-6]:${CL} "
 }
 
 run_quick_install() {
@@ -312,6 +391,19 @@ run_quick_install() {
     fi
     
     step "Step 4: Customize your stack and generate docker-compose file"
+    
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║  This step will let you choose which services to include      ║${NC}"
+    echo -e "${BLUE}║  in your media management stack.                              ║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo -e "${YELLOW}Available services include:${NC}"
+    echo -e "  ${GREEN}•${NC} Core: prowlarr, sonarr, radarr (recommended)"
+    echo -e "  ${GREEN}•${NC} Download: qbittorrent, nzbget (with VPN via gluetun)"
+    echo -e "  ${GREEN}•${NC} Media: lidarr (music), bazarr (subtitles)"
+    echo -e "  ${GREEN}•${NC} Request: jellyseerr (media requests)"
+    echo
+    
     if [ -f "customize-arr-install.sh" ]; then
         if [[ -t 0 ]]; then
             read -p "Run stack customization? [Y/n]: " run_custom
@@ -356,6 +448,7 @@ run_custom_install() {
     echo -e "${GREEN}2.${NC} Setup Folder Structure        (setup-arr-folders.sh)"
     echo -e "${GREEN}3.${NC} Create NFS Directories        (create-nfs-dirs.sh)"
     echo -e "${GREEN}4.${NC} Customize Stack               (customize-arr-install.sh)"
+    echo -e "   ${BLUE}→ Choose services: prowlarr, sonarr, radarr, qbittorrent, etc.${NC}"
     echo -e "${GREEN}5.${NC} Manage Services               (manage.sh)"
     echo
     
@@ -365,7 +458,12 @@ run_custom_install() {
         1) ./install-docker.sh ;;
         2) ./setup-arr-folders.sh ;;
         3) ./create-nfs-dirs.sh ;;
-        4) ./customize-arr-install.sh ;;
+        4) 
+            echo -e "${BLUE}The customize script will show you all available services${NC}"
+            echo -e "${BLUE}including prowlarr, sonarr, radarr, qbittorrent, lidarr, etc.${NC}"
+            echo
+            ./customize-arr-install.sh
+            ;;
         5) ./manage.sh ;;
         q|Q) return 0 ;;
         *) error "Invalid choice" ;;
@@ -431,25 +529,25 @@ main() {
     
     # Clean up any existing installations first
     if [ -d "$INSTALL_DIR" ]; then
-        warn "Found existing installation directory. Cleaning up..."
+        msg_warn "Found existing installation directory. Cleaning up..."
         rm -rf "$INSTALL_DIR"
-        success "Old installation cleaned up"
+        msg_ok "Old installation cleaned up"
     fi
     
     check_requirements
     
     # Check if running in non-interactive mode (piped from curl)
     if [[ ! -t 0 ]]; then
-        warn "Running in non-interactive mode - starting Quick Install automatically"
+        msg_warn "Running in non-interactive mode - starting Quick Install automatically"
         download_repository
         run_quick_install
-        success "Installation completed!"
+        msg_ok "Installation completed!"
         return 0
     fi
     
     while true; do
         show_options
-        read -p "Select an option (1-6): " choice
+        read choice
         echo
         
         case $choice in
@@ -473,20 +571,22 @@ main() {
                 show_documentation
                 ;;
             6)
-                step "Exiting..."
+                msg_info "Exiting installer"
                 cleanup
+                msg_ok "Goodbye!"
                 exit 0
                 ;;
             *)
-                error "Invalid choice. Please select 1-6."
+                msg_error "Invalid choice. Please select 1-6."
                 ;;
         esac
         echo
-        read -p "Press Enter to continue..."
+        echo -ne " ${BL}Press Enter to continue...${CL}"
+        read
         clear
     done
     
-    success "Installation completed!"
+    msg_ok "Installation completed successfully!"
     cleanup
 }
 

@@ -131,6 +131,46 @@ chmod +x installer.sh
 | Notifiarr | 5454 | Notification system |
 | Flaresolverr | 8191 | Cloudflare bypass |
 
+## 📋 Available Services for Selection
+
+When prompted "Choose which services to include", you can type any combination of these service names (space-separated):
+
+### Core Services
+- **gluetun** - VPN container for secure downloads
+- **prowlarr** - Indexer management (recommended)
+- **sonarr** - TV show automation
+- **radarr** - Movie automation
+
+### Download Clients
+- **qbittorrent** - Torrent client (uses VPN)
+- **nzbget** - Usenet client (uses VPN)
+
+### Additional Media Services
+- **lidarr** - Music automation
+- **bazarr** - Subtitle management
+- **jellyseerr** - Media request management
+
+### Optional Services
+- **ytdl-sub** - YouTube downloader
+- **deunhealth** - Health monitoring for containers
+
+### Example Selections
+```bash
+# Basic *arr stack with torrents
+sonarr radarr prowlarr qbittorrent gluetun
+
+# Complete media automation stack
+gluetun prowlarr sonarr radarr lidarr bazarr qbittorrent nzbget jellyseerr
+
+# Minimal setup (no VPN)
+sonarr radarr prowlarr
+
+# TV shows only with VPN
+gluetun prowlarr sonarr qbittorrent
+```
+
+**Note:** If you include `qbittorrent` or `nzbget`, it's recommended to also include `gluetun` for VPN protection.
+
 ## 🛠️ Management Commands
 
 ```bash
