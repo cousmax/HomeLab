@@ -1,596 +1,264 @@
 #!/bin/bash
+# filepath: Media Management/install.sh
 
-# HomeLab Media Management Installer
-# Inspired by Proxmox Helper Scripts design
+# HomeLab Media Stack Installer
+# Proxmox Helper Scripts Style
 # Author: cousmax
-# License: MIT
+
+# Color definitions
+RD='\033[01;31m'
+BL='\033[36m' 
+GN='\033[1;92m'
+YW='\033[33m'
+CL='\033[m'
+BFR="\\r\\033[K"
+CM="${GN}✓${CL}"
+CROSS="${RD}✗${CL}"
 
 function header_info {
 clear
 cat <<"EOF"
-    __  __                      __          __  
-   / / / /___  ____ ___  ___   / /   ____ _/ /_ 
-  / /_/ / __ \/ __ `__ \/ _ \ / /   / __ `/ __ \
- / __  / /_/ / / / / / /  __// /___/ /_/ / /_/ /
-/_/ /_/\____/_/ /_/ /_/\___//_____/\__,_/_.___/ 
-                                               
+    __  __          _ _         _____ _             _    
+   |  \/  | ___  __| (_) __ _  / ____| |_ __ _  ___| | __
+   | |\/| |/ _ \/ _` | |/ _` | \___ \| __/ _` |/ __| |/ /
+   | |  | |  __/ (_| | | (_| |  ___) | || (_| | (__|   < 
+   |_|  |_|\___|\__,_|_|\__,_| |____/ \__\__,_|\___|_|\_\
+                                                         
+         Automated *arr Stack Deployment
 EOF
+echo -e " ${BL}Using TRASHguides Folder Structure & NFS Storage${CL}"
+echo
 }
 
-RD='\033[01;31m'
-BL='\033[36m'
-GN='\033[1;92m'
-CL='\033[m'
-YW='\033[33m'
-BFR="\\r\\033[K"
-HOLD="-"
-CM="${GN}✓${CL}"
-CROSS="${RD}✗${CL}"
-INFO="${BL}ⓘ${CL}"
-WARN="${YW}⚠${CL}"
-
-set -Eeuo pipefail
-trap cleanup SIGINT SIGTERM ERR EXIT
-
-cleanup() {
-    trap - SIGINT SIGTERM ERR EXIT
-    if [[ -n "${SPINNER_PID-}" ]] && ps -p $SPINNER_PID > /dev/null 2>&1; then
-        kill $SPINNER_PID > /dev/null 2>&1
-    fi
-}
-
-msg_info() {
-    local msg="$1"
-    echo -ne " ${INFO} ${msg}..."
-}
-
-msg_ok() {
-    local msg="$1"
-    echo -e "${BFR} ${CM} ${msg}"
-}
-
-msg_error() {
-    local msg="$1"
-    echo -e "${BFR} ${CROSS} ${msg}"
-}
-
-msg_warn() {
-    local msg="$1"
-    echo -e "${BFR} ${WARN} ${msg}"
-}
+msg_info() { echo -ne " ${BL}ⓘ${CL} $1..."; }
+msg_ok() { echo -e "${BFR} ${CM} $1"; }
+msg_error() { echo -e "${BFR} ${CROSS} $1"; }
+msg_warn() { echo -e "${BFR} ${YW}⚠${CL} $1"; }
 
 spinner() {
     local pid=$1
-    local delay=0.1
     local spinstr='|/-\'
     while ps -p $pid > /dev/null 2>&1; do
         local temp=${spinstr#?}
         printf " [%c]  " "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
+        spinstr=$temp${spinstr%"$temp"}
+        sleep 0.1
         printf "\b\b\b\b\b\b"
     done
     printf "    \b\b\b\b"
 }
 
-REPO_URL="https://github.com/cousmax/HomeLab"
-BRANCH="Dynamic-Servarr"
-INSTALL_DIR="HomeLab-Media-Setup"
-MEDIA_PATH="Media Management"
-
-show_banner() {
+update_system() {
     header_info
-    echo -e " ${BL}Media Management Stack Installer${CL}"
-    echo -e " ${YW}Automated *arr Stack with Docker${CL}"
-    echo
-    echo -e " ${BL}Services:${CL} Prowlarr, Sonarr, Radarr, qBittorrent, NZBGet"
-    echo -e " ${BL}Features:${CL} NFS Storage, VPN Integration, TRASHguides Config"
-    echo -e " ${BL}Platform:${CL} Docker Compose with LinuxServer.io Images"
-    echo
-}
-
-install_docker_system() {
-    header_info
-    echo -e " ${BL}Docker Installation${CL}"
-    echo
+    msg_info "Updating system packages"
     
-    # Check for sudo/root permissions first
-    if [ "$EUID" -ne 0 ]; then
-        msg_info "Checking for sudo privileges"
-        if ! sudo -n true 2>/dev/null; then
-            echo -e "${BFR} ${INFO} Please enter your sudo password when prompted"
-        fi
-        msg_ok "Sudo access confirmed"
-    fi
-    
-    # Detect Linux distribution
-    msg_info "Detecting Linux distribution"
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        DISTRO=$ID
-        msg_ok "Distribution detected: $PRETTY_NAME"
+    if command -v apt &> /dev/null; then
+        (sudo apt update && sudo apt upgrade -y) &> /dev/null &
+    elif command -v dnf &> /dev/null; then
+        sudo dnf update -y &> /dev/null &
+    elif command -v pacman &> /dev/null; then
+        sudo pacman -Syu --noconfirm &> /dev/null &
     else
-        msg_error "Cannot detect Linux distribution"
+        msg_error "Unsupported package manager"
         exit 1
     fi
+    
+    spinner $!
+    wait $! && msg_ok "System updated" || { msg_error "Update failed"; exit 1; }
+}
+
+install_docker() {
+    header_info
+    msg_info "Installing Docker"
+    
+    # Detect distro
+    . /etc/os-release
+    DISTRO=$ID
     
     case "$DISTRO" in
         ubuntu|debian)
-            msg_info "Installing Docker on Ubuntu/Debian"
             (
-                sudo apt-get update -qq >/dev/null 2>&1 &&
-                sudo apt-get remove docker docker-engine docker.io containerd runc -y -qq >/dev/null 2>&1 || true &&
-                sudo apt-get install -y ca-certificates curl gnupg lsb-release -qq >/dev/null 2>&1 &&
-                sudo mkdir -p /etc/apt/keyrings &&
-                curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null &&
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | \
-                    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null &&
-                sudo apt-get update -qq >/dev/null 2>&1 &&
-                sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -qq >/dev/null 2>&1
+                sudo apt remove docker docker-engine docker.io containerd runc -y &> /dev/null || true
+                sudo apt install ca-certificates curl gnupg lsb-release -y &> /dev/null
+                sudo mkdir -p /etc/apt/keyrings
+                curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list &> /dev/null
+                sudo apt update &> /dev/null
+                sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y &> /dev/null
             ) &
-            spinner $!
-            wait $! && msg_ok "Docker installed successfully" || { msg_error "Docker installation failed"; exit 1; }
             ;;
-        centos|rhel|fedora)
-            msg_info "Installing Docker on CentOS/RHEL/Fedora"
+        fedora|centos|rhel)
             (
-                sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine -q >/dev/null 2>&1 || true &&
-                sudo dnf -y install dnf-plugins-core -q >/dev/null 2>&1 &&
-                sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo -q >/dev/null 2>&1 &&
-                sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -q >/dev/null 2>&1
+                sudo dnf remove docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine -y &> /dev/null || true
+                sudo dnf install dnf-plugins-core -y &> /dev/null
+                sudo dnf config-manager --add-repo https://download.docker.com/linux/$DISTRO/docker-ce.repo &> /dev/null
+                sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y &> /dev/null
             ) &
-            spinner $!
-            wait $! && msg_ok "Docker installed successfully" || { msg_error "Docker installation failed"; exit 1; }
             ;;
         arch)
-            msg_info "Installing Docker on Arch Linux"
-            (
-                sudo pacman -Sy --noconfirm docker docker-compose >/dev/null 2>&1
-            ) &
-            spinner $!
-            wait $! && msg_ok "Docker installed successfully" || { msg_error "Docker installation failed"; exit 1; }
-            ;;
-        *)
-            msg_error "Unsupported distribution: $DISTRO"
-            echo -e " ${WARN} Please install Docker manually from https://docs.docker.com/engine/install/"
-            exit 1
+            (sudo pacman -S docker docker-compose --noconfirm) &> /dev/null &
             ;;
     esac
     
-    # Post-install configuration
-    msg_info "Configuring Docker service"
-    (
-        sudo groupadd docker 2>/dev/null || true &&
-        sudo usermod -aG docker "$USER" &&
-        sudo systemctl enable docker >/dev/null 2>&1 &&
-        sudo systemctl start docker >/dev/null 2>&1 &&
-        sleep 3
-    ) &
     spinner $!
-    wait $! && msg_ok "Docker service configured" || { msg_error "Docker configuration failed"; exit 1; }
+    wait $! && msg_ok "Docker installed" || { msg_error "Docker installation failed"; exit 1; }
     
-    # Test Docker installation
-    msg_info "Testing Docker installation"
-    if command -v docker >/dev/null 2>&1; then
-        msg_ok "Docker installation completed successfully"
-        echo -e " ${YW} Note: You may need to log out and back in for Docker group changes to take effect${CL}"
-    else
-        msg_error "Docker installation verification failed"
-        exit 1
-    fi
-}
-        if docker run --rm hello-world >/dev/null 2>&1; then
-            success "Docker is working correctly"
-        else
-            warn "Docker installed but group permissions need refresh"
-            echo -e "${YELLOW}Docker group permissions will be active after you log out and back in.${NC}"
-            echo -e "${YELLOW}For immediate use, you can run: newgrp docker${NC}"
-            echo -e "${YELLOW}Or continue - the setup scripts will use sudo when needed.${NC}"
-        fi
-        
-        # Show Docker version
-        docker --version 2>/dev/null || sudo docker --version
-    else
-        error "Docker installation failed"
-        return 1
-    fi
+    # Post-install steps
+    msg_info "Configuring Docker"
+    (
+        sudo groupadd docker 2>/dev/null || true
+        sudo usermod -aG docker $USER
+        sudo systemctl enable docker
+        sudo systemctl start docker
+    ) &> /dev/null &
+    
+    spinner $!
+    wait $! && msg_ok "Docker configured" || { msg_error "Docker configuration failed"; exit 1; }
 }
 
-check_requirements() {
-    step "Checking system requirements..."
-    local missing=()
+setup_folders() {
+    header_info
+    msg_info "Setting up TRASHguides folder structure"
     
-    # First, ensure we can use sudo if needed
-    step "Verifying sudo access for setup scripts..."
-    if ! sudo -n true 2>/dev/null; then
-        warn "Some setup scripts require sudo privileges. Please enter your password:"
-        sudo -v || {
-            error "Sudo access required for NFS mounting and directory operations"
-            exit 1
-        }
-    fi
-    success "Sudo access confirmed"
+    # Get data path from user
+    echo -ne " ${BL}Enter your data path [/mnt/media]: ${CL}"
+    read -r DATA_PATH
+    DATA_PATH=${DATA_PATH:-/mnt/media}
     
-    for tool in curl git; do
-        if ! command -v "$tool" >/dev/null 2>&1; then
-            missing+=("$tool")
-        fi
-    done
+    # Create TRASHguides folder structure
+    (
+        sudo mkdir -p "$DATA_PATH"/{torrents,usenet,media}/{movies,tv,music}
+        sudo mkdir -p "$DATA_PATH"/torrents/{books,software}
+        sudo mkdir -p "$DATA_PATH"/usenet/{books,software}
+        sudo mkdir -p "$DATA_PATH"/media/youtube
+        sudo chown -R $USER:$USER "$DATA_PATH"
+    ) &> /dev/null &
     
-    # Check if Docker is installed
-    if ! command -v docker >/dev/null 2>&1; then
-        warn "Docker is not installed"
-        
-        # Check if we're in an interactive session
-        if [[ -t 0 ]]; then
-            read -p "Would you like to install Docker automatically? [Y/n]: " install_docker
-            install_docker=${install_docker,,}
-        else
-            warn "Running in non-interactive mode - will install Docker automatically"
-            install_docker="y"
-        fi
-        
-        if [[ ! "$install_docker" =~ ^n(o)?$ ]]; then
-            install_docker_system
-        else
-            missing+=("docker")
-        fi
-    else
-        success "Docker is already installed"
-        # Check if Docker service is running
-        if ! systemctl is-active --quiet docker 2>/dev/null; then
-            warn "Docker service is not running"
-            if [[ -t 0 ]]; then
-                read -p "Would you like to start Docker service? [Y/n]: " start_docker
-                start_docker=${start_docker,,}
-            else
-                warn "Auto-starting Docker service"
-                start_docker="y"
-            fi
-            
-            if [[ ! "$start_docker" =~ ^n(o)?$ ]]; then
-                sudo systemctl start docker
-                sudo systemctl enable docker
-                success "Docker service started"
-            fi
-        fi
-    fi
+    spinner $!
+    wait $! && msg_ok "Folder structure created" || { msg_error "Folder creation failed"; exit 1; }
     
-    if [ ${#missing[@]} -gt 0 ]; then
-        error "Missing required tools: ${missing[*]}"
-        warn "Please install them and re-run this script."
-        
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            echo -e "${YELLOW}On Ubuntu/Debian, run:${NC}"
-            echo "  sudo apt update && sudo apt install -y curl git"
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}On macOS, run:${NC}"
-            echo "  brew install git curl"
-        fi
-        exit 1
-    fi
-    
-    success "All requirements satisfied"
+    echo "$DATA_PATH" > /tmp/data_path
 }
 
-download_repository() {
-    step "Downloading HomeLab repository..."
+setup_nfs() {
+    header_info
+    msg_info "Setting up NFS share"
     
-    if [ -d "$INSTALL_DIR" ]; then
-        warn "Directory $INSTALL_DIR already exists. Removing old version..."
-        rm -rf "$INSTALL_DIR"
-    fi
+    DATA_PATH=$(cat /tmp/data_path)
     
-    step "Cloning fresh copy from GitHub..."
-    git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
-        error "Failed to clone repository!"
-        exit 1
-    }
+    echo -ne " ${BL}Enter NFS server IP: ${CL}"
+    read -r NFS_SERVER
+    echo -ne " ${BL}Enter NFS share path [/mnt/media]: ${CL}"
+    read -r NFS_SHARE
+    NFS_SHARE=${NFS_SHARE:-/mnt/media}
     
-    # Make all scripts executable
-    find "$INSTALL_DIR" -name "*.sh" -exec chmod +x {} \;
-    success "Repository downloaded and prepared"
+    (
+        sudo apt install nfs-common -y &> /dev/null || sudo dnf install nfs-utils -y &> /dev/null || sudo pacman -S nfs-utils --noconfirm &> /dev/null
+        sudo mkdir -p "$DATA_PATH"
+        echo "$NFS_SERVER:$NFS_SHARE $DATA_PATH nfs defaults 0 0" | sudo tee -a /etc/fstab &> /dev/null
+        sudo mount -a
+    ) &> /dev/null &
+    
+    spinner $!
+    wait $! && msg_ok "NFS share configured" || msg_warn "NFS setup failed - you can mount manually later"
 }
 
-show_options() {
-    echo -e " ${YW}Select Installation Option:${CL}"
-    echo
-    echo -e " ${GN}[1]${CL} Quick Install ${BL}(Recommended)${CL}"
-    echo -e "     Automated setup with guided prompts"
-    echo
-    echo -e " ${GN}[2]${CL} Custom Install"
-    echo -e "     Manual step-by-step installation"
-    echo
-    echo -e " ${GN}[3]${CL} Install Docker Only"
-    echo -e "     Install Docker if not already present"
-    echo
-    echo -e " ${GN}[4]${CL} Update Existing Setup"
-    echo -e "     Update existing media management stack"
-    echo
-    echo -e " ${GN}[5]${CL} View Documentation"
-    echo -e "     Open guides and configuration help"
-    echo
-    echo -e " ${GN}[6]${CL} Exit"
-    echo
-    echo -ne " ${BL}Please select an option [1-6]:${CL} "
+deploy_stack() {
+    header_info
+    msg_info "Downloading docker-compose.yml"
+    
+    DATA_PATH=$(cat /tmp/data_path)
+    
+    # Create deployment directory
+    mkdir -p ~/media-stack
+    cd ~/media-stack
+    
+    # Download docker-compose.yml
+    curl -fsSL "https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/docker-compose.yml" -o docker-compose.yml &
+    
+    spinner $!
+    wait $! && msg_ok "Downloaded docker-compose.yml" || { msg_error "Download failed"; exit 1; }
+    
+    msg_info "Creating .env file"
+    
+    # Create .env file with user input
+    cat > .env << EOF
+# User/Group IDs
+PUID=$(id -u)
+PGID=$(id -g)
+TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "UTC")
+
+# Data path
+DATA_PATH=$DATA_PATH
+
+# VPN settings (configure these for your VPN provider)
+FIREWALL_VPN_INPUT_PORTS=8080
+EOF
+    
+    msg_ok ".env file created"
+    
+    msg_info "Starting media stack"
+    docker compose up -d &> /dev/null &
+    
+    spinner $!
+    wait $! && msg_ok "Media stack deployed" || { msg_error "Deployment failed"; exit 1; }
 }
 
-run_quick_install() {
-    step "Starting Quick Installation..."
-    cd "$INSTALL_DIR/$MEDIA_PATH/scripts"
-    
-    # Check if Docker is installed and working
-    if ! command -v docker >/dev/null 2>&1; then
-        error "Docker is not available. Please install Docker first."
-        return 1
-    fi
-    
-    success "Docker is available - proceeding with setup"
-    
-    # Run individual scripts, skipping Docker installation
-    step "Step 2: Set up TRASHguides folder structure"
-    if [ -f "setup-arr-folders.sh" ]; then
-        if [[ -t 0 ]]; then
-            read -p "Run folder setup? [Y/n]: " run_setup
-            run_setup=${run_setup,,}
-        else
-            warn "Auto-running folder setup (requires sudo privileges)"
-            run_setup="y"
-        fi
-        
-        if [[ ! "$run_setup" =~ ^n(o)?$ ]]; then
-            chmod +x setup-arr-folders.sh
-            warn "This script requires sudo privileges for NFS mounting and directory creation"
-            echo -e "${YELLOW}Please enter your sudo password when prompted:${NC}"
-            
-            # Run with sudo since the script checks for root
-            if sudo ./setup-arr-folders.sh; then
-                success "setup-arr-folders.sh completed."
-            else
-                error "setup-arr-folders.sh failed. You may need to run it manually."
-                warn "To run manually: cd '$INSTALL_DIR/$MEDIA_PATH/scripts' && sudo ./setup-arr-folders.sh"
-            fi
-        else
-            warn "Skipping setup-arr-folders.sh."
-        fi
-    else
-        error "setup-arr-folders.sh not found!"
-    fi
-    
-    step "Step 3: Create directories on NFS host (if needed)"
-    if [ -f "create-nfs-dirs.sh" ]; then
-        if [[ -t 0 ]]; then
-            read -p "Run NFS directory creation? [Y/n]: " run_nfs
-            run_nfs=${run_nfs,,}
-        else
-            warn "Auto-running NFS directory creation (may require sudo privileges)"
-            run_nfs="y"
-        fi
-        
-        if [[ ! "$run_nfs" =~ ^n(o)?$ ]]; then
-            chmod +x create-nfs-dirs.sh
-            
-            # Check if this script also requires root
-            if grep -q "EUID.*-ne.*0" create-nfs-dirs.sh 2>/dev/null; then
-                warn "This script requires sudo privileges"
-                echo -e "${YELLOW}Please enter your sudo password when prompted:${NC}"
-                if sudo ./create-nfs-dirs.sh; then
-                    success "create-nfs-dirs.sh completed."
-                else
-                    error "create-nfs-dirs.sh failed. You may need to run it manually."
-                fi
-            else
-                ./create-nfs-dirs.sh
-                success "create-nfs-dirs.sh completed."
-            fi
-        else
-            warn "Skipping create-nfs-dirs.sh."
-        fi
-    else
-        warn "create-nfs-dirs.sh not found - this is optional"
-    fi
-    
-    step "Step 4: Customize your stack and generate docker-compose file"
-    
-    echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║  This step will let you choose which services to include      ║${NC}"
-    echo -e "${BLUE}║  in your media management stack.                              ║${NC}"
-    echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
+show_completion() {
+    header_info
+    echo -e " ${GN}🎉 Installation Complete!${CL}"
     echo
-    echo -e "${YELLOW}Available services include:${NC}"
-    echo -e "  ${GREEN}•${NC} Core: prowlarr, sonarr, radarr (recommended)"
-    echo -e "  ${GREEN}•${NC} Download: qbittorrent, nzbget (with VPN via gluetun)"
-    echo -e "  ${GREEN}•${NC} Media: lidarr (music), bazarr (subtitles)"
-    echo -e "  ${GREEN}•${NC} Request: jellyseerr (media requests)"
+    echo -e " ${BL}Your media stack is now running at:${CL}"
+    echo -e "   • Sonarr (TV):      http://$(hostname -I | awk '{print $1}'):8989"
+    echo -e "   • Radarr (Movies):  http://$(hostname -I | awk '{print $1}'):7878"
+    echo -e "   • Lidarr (Music):   http://$(hostname -I | awk '{print $1}'):8686"
+    echo -e "   • Bazarr (Subs):    http://$(hostname -I | awk '{print $1}'):6767"
+    echo -e "   • Prowlarr:         http://$(hostname -I | awk '{print $1}'):9696"
+    echo -e "   • qBittorrent:      http://$(hostname -I | awk '{print $1}'):8080"
+    echo -e "   • Jellyseerr:       http://$(hostname -I | awk '{print $1}'):5055"
     echo
-    
-    if [ -f "customize-arr-install.sh" ]; then
-        if [[ -t 0 ]]; then
-            read -p "Run stack customization? [Y/n]: " run_custom
-            run_custom=${run_custom,,}
-        else
-            warn "Auto-running stack customization"
-            run_custom="y"
-        fi
-        
-        if [[ ! "$run_custom" =~ ^n(o)?$ ]]; then
-            chmod +x customize-arr-install.sh
-            
-            # This script usually doesn't need sudo, but check to be sure
-            if grep -q "EUID.*-ne.*0" customize-arr-install.sh 2>/dev/null; then
-                warn "This script requires sudo privileges"
-                sudo ./customize-arr-install.sh
-            else
-                ./customize-arr-install.sh
-            fi
-            success "customize-arr-install.sh completed."
-        else
-            warn "Skipping customize-arr-install.sh."
-        fi
-    else
-        error "customize-arr-install.sh not found!"
-    fi
-    
-    step "Step 5: Manage your stack"
-    echo -e "${YELLOW}You can now use the management script to start, stop, and monitor your stack.${NC}"
-    echo -e "${BLUE}To manage your stack, run:${NC}"
-    echo -e "  ${GREEN}cd '$INSTALL_DIR/$MEDIA_PATH/scripts' && ./manage.sh [start|stop|status|logs|vpn-status]${NC}"
-    
-    success "Quick install complete!"
-}
-
-run_custom_install() {
-    step "Custom Installation Menu"
-    cd "$INSTALL_DIR/$MEDIA_PATH/scripts"
-    
-    echo -e "${YELLOW}Available installation scripts:${NC}"
-    echo -e "${GREEN}1.${NC} Install Docker                 (install-docker.sh)"
-    echo -e "${GREEN}2.${NC} Setup Folder Structure        (setup-arr-folders.sh)"
-    echo -e "${GREEN}3.${NC} Create NFS Directories        (create-nfs-dirs.sh)"
-    echo -e "${GREEN}4.${NC} Customize Stack               (customize-arr-install.sh)"
-    echo -e "   ${BLUE}→ Choose services: prowlarr, sonarr, radarr, qbittorrent, etc.${NC}"
-    echo -e "${GREEN}5.${NC} Manage Services               (manage.sh)"
+    echo -e " ${BL}Stack management:${CL}"
+    echo -e "   • Start:  ${YW}cd ~/media-stack && docker compose up -d${CL}"
+    echo -e "   • Stop:   ${YW}cd ~/media-stack && docker compose down${CL}"
+    echo -e "   • Logs:   ${YW}cd ~/media-stack && docker compose logs -f${CL}"
     echo
-    
-    read -p "Select script to run (1-5) or 'q' to quit: " choice
-    
-    case $choice in
-        1) ./install-docker.sh ;;
-        2) ./setup-arr-folders.sh ;;
-        3) ./create-nfs-dirs.sh ;;
-        4) 
-            echo -e "${BLUE}The customize script will show you all available services${NC}"
-            echo -e "${BLUE}including prowlarr, sonarr, radarr, qbittorrent, lidarr, etc.${NC}"
-            echo
-            ./customize-arr-install.sh
-            ;;
-        5) ./manage.sh ;;
-        q|Q) return 0 ;;
-        *) error "Invalid choice" ;;
-    esac
-}
-
-update_setup() {
-    step "Updating existing setup..."
-    
-    if [ ! -d "$INSTALL_DIR" ]; then
-        warn "No existing setup found. Use option 1 for new installation."
-        return 1
-    fi
-    
-    cd "$INSTALL_DIR"
-    git pull origin "$BRANCH"
-    find . -name "*.sh" -exec chmod +x {} \;
-    success "Setup updated successfully"
-}
-
-show_documentation() {
-    step "Opening documentation..."
-    
-    if [ -d "$INSTALL_DIR/$MEDIA_PATH" ]; then
-        echo -e "${YELLOW}Available documentation:${NC}"
-        ls "$INSTALL_DIR/$MEDIA_PATH"/*.md 2>/dev/null | while read -r doc; do
-            echo -e "${GREEN}→${NC} $(basename "$doc")"
-        done
-        
-        if command -v less >/dev/null 2>&1; then
-            read -p "View README? [y/N]: " view_readme
-            if [[ "$view_readme" =~ ^[Yy] ]]; then
-                less "$INSTALL_DIR/$MEDIA_PATH/README.md"
-            fi
-        fi
-    else
-        warn "Please download repository first (option 1 or 2)"
-    fi
-}
-
-cleanup() {
-    if [[ -t 0 ]]; then
-        read -p "Remove downloaded files? [y/N]: " cleanup_choice
-        if [[ "$cleanup_choice" =~ ^[Yy] ]]; then
-            if [ -d "$INSTALL_DIR" ]; then
-                rm -rf "$INSTALL_DIR"
-                success "Cleanup completed"
-            fi
-        else
-            if [ -d "$INSTALL_DIR" ]; then
-                warn "Files kept in: $PWD/$INSTALL_DIR"
-            fi
-        fi
-    else
-        if [ -d "$INSTALL_DIR" ]; then
-            warn "Auto-cleanup: keeping downloaded files at: $PWD/$INSTALL_DIR"
-        fi
-    fi
+    echo -e " ${YW}⚠ Don't forget to configure your VPN settings in ~/media-stack/.env${CL}"
 }
 
 main() {
-    show_banner
+    header_info
+    echo -e " ${BL}This installer will:${CL}"
+    echo -e "   1. Update your system"
+    echo -e "   2. Install Docker"  
+    echo -e "   3. Setup TRASHguides folder structure"
+    echo -e "   4. Configure NFS storage"
+    echo -e "   5. Deploy your media stack"
+    echo
+    echo -ne " ${YW}Continue? [Y/n]: ${CL}"
+    read -r CONTINUE
     
-    # Clean up any existing installations first
-    if [ -d "$INSTALL_DIR" ]; then
-        msg_warn "Found existing installation directory. Cleaning up..."
-        rm -rf "$INSTALL_DIR"
-        msg_ok "Old installation cleaned up"
-    fi
-    
-    check_requirements
-    
-    # Check if running in non-interactive mode (piped from curl)
-    if [[ ! -t 0 ]]; then
-        msg_warn "Running in non-interactive mode - starting Quick Install automatically"
-        download_repository
-        run_quick_install
-        msg_ok "Installation completed!"
-        return 0
-    fi
-    
-    while true; do
-        show_options
-        read choice
-        echo
+    if [[ ! "$CONTINUE" =~ ^[Nn] ]]; then
+        update_system
         
-        case $choice in
-            1)
-                download_repository
-                run_quick_install
-                break
-                ;;
-            2)
-                download_repository
-                run_custom_install
-                ;;
-            3)
-                install_docker_system
-                ;;
-            4)
-                update_setup
-                ;;
-            5)
-                download_repository
-                show_documentation
-                ;;
-            6)
-                msg_info "Exiting installer"
-                cleanup
-                msg_ok "Goodbye!"
-                exit 0
-                ;;
-            *)
-                msg_error "Invalid choice. Please select 1-6."
-                ;;
-        esac
-        echo
-        echo -ne " ${BL}Press Enter to continue...${CL}"
-        read
-        clear
-    done
-    
-    msg_ok "Installation completed successfully!"
-    cleanup
+        if ! command -v docker &> /dev/null; then
+            install_docker
+        else
+            msg_ok "Docker already installed"
+        fi
+        
+        setup_folders
+        setup_nfs
+        deploy_stack
+        show_completion
+        
+        # Cleanup
+        rm -f /tmp/data_path
+        
+        echo -e " ${GN}✓ Setup complete! Enjoy your media stack!${CL}"
+    else
+        msg_warn "Installation cancelled"
+        exit 0
+    fi
 }
-
-# Handle Ctrl+C gracefully
-trap 'echo; warn "Installation cancelled by user"; exit 1' INT
 
 main "$@"
