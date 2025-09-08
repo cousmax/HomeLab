@@ -1383,6 +1383,196 @@ SERVER_COUNTRIES=Netherlands
         print(f"  2. Set up your *arr apps to monitor the correct media folders")
         print(f"  3. Configure hardlink-friendly settings in your applications")
 
+    def _start_compose_stack(self, selected_services: List[str]) -> bool:
+        """Start the Docker Compose stack with proper group handling"""
+        self.print_colored("\n🚀 Starting Docker Compose stack...", Colors.CYAN)
+        
+        compose_cmd = getattr(self, 'compose_command', 'docker compose')
+        
+        # Check if user needs to use newgrp docker
+        needs_newgrp = self._check_docker_group_membership()
+        
+        if needs_newgrp:
+            self.print_colored("🔧 Docker group membership detected but not active in current session", Colors.YELLOW)
+            self.print_colored("Running with newgrp docker to activate group membership...", Colors.BLUE)
+            
+            # Try with newgrp docker first
+            cmd = f"newgrp docker << 'EOF'\n{compose_cmd} up -d\nEOF"
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+                if result.returncode == 0:
+                    self.print_colored("✅ Services started successfully with docker group!", Colors.GREEN)
+                    return True
+                else:
+                    self.print_colored("⚠ newgrp approach failed, trying with sudo...", Colors.YELLOW)
+            except subprocess.TimeoutExpired:
+                self.print_colored("⚠ Command timed out, trying with sudo...", Colors.YELLOW)
+            except Exception as e:
+                self.print_colored(f"⚠ newgrp failed ({e}), trying with sudo...", Colors.YELLOW)
+        
+        # Fallback to sudo or direct command
+        try:
+            # Try without sudo first
+            self.print_colored(f"Running: {compose_cmd} up -d", Colors.WHITE)
+            result = subprocess.run([compose_cmd.split()[0], compose_cmd.split()[1], 'up', '-d'], 
+                                  capture_output=True, text=True, timeout=120)
+            
+            if result.returncode != 0:
+                # Try with sudo
+                self.print_colored("Retrying with sudo...", Colors.YELLOW)
+                result = subprocess.run(['sudo'] + compose_cmd.split() + ['up', '-d'], 
+                                      capture_output=True, text=True, timeout=120)
+            
+            if result.returncode == 0:
+                self.print_colored("✅ Docker Compose stack started successfully!", Colors.GREEN)
+                if result.stdout:
+                    self.print_colored("Output:", Colors.BLUE)
+                    print(result.stdout)
+                return True
+            else:
+                self.print_colored("❌ Failed to start Docker Compose stack", Colors.RED)
+                if result.stderr:
+                    self.print_colored("Error details:", Colors.RED)
+                    print(result.stderr)
+                return False
+                
+        except subprocess.TimeoutExpired:
+            self.print_colored("❌ Docker Compose startup timed out", Colors.RED)
+            return False
+        except Exception as e:
+            self.print_colored(f"❌ Error starting Docker Compose: {e}", Colors.RED)
+            return False
+
+    def _check_docker_group_membership(self) -> bool:
+        """Check if user is in docker group but needs newgrp"""
+        try:
+            import grp
+            import pwd
+            
+            # Get current user
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            
+            # Check if docker group exists and user is in it
+            try:
+                docker_group = grp.getgrnam('docker')
+                user_in_docker_group = current_user in docker_group.gr_mem
+                
+                if user_in_docker_group:
+                    # Test if docker works without sudo
+                    test_result = subprocess.run(['docker', 'ps'], capture_output=True, text=True)
+                    if test_result.returncode != 0:
+                        return True  # User is in group but needs newgrp
+                        
+                return False
+            except KeyError:
+                return False  # Docker group doesn't exist
+                
+        except Exception:
+            return False
+
+    def _verify_services_running(self, selected_services: List[str]):
+        """Verify that all selected services are running"""
+        self.print_colored("\n🔍 Verifying services are running...", Colors.CYAN)
+        
+        compose_cmd = getattr(self, 'compose_command', 'docker compose')
+        
+        # Wait a moment for services to start
+        import time
+        time.sleep(3)
+        
+        try:
+            # Get service status
+            cmd = compose_cmd.split() + ['ps', '--format', 'table']
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                # Try with sudo
+                result = subprocess.run(['sudo'] + cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                output_lines = result.stdout.strip().split('\n')
+                
+                # Parse the service status
+                running_services = []
+                failed_services = []
+                
+                for line in output_lines[1:]:  # Skip header
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            service_name = parts[0]
+                            status = ' '.join(parts[1:])
+                            
+                            if 'Up' in status:
+                                running_services.append(service_name)
+                            else:
+                                failed_services.append((service_name, status))
+                
+                # Report status
+                if running_services:
+                    self.print_colored("✅ Running services:", Colors.GREEN)
+                    for service in running_services:
+                        self.print_colored(f"  ✓ {service}", Colors.GREEN)
+                
+                if failed_services:
+                    self.print_colored("⚠ Services with issues:", Colors.YELLOW)
+                    for service, status in failed_services:
+                        self.print_colored(f"  ⚠ {service}: {status}", Colors.YELLOW)
+                    
+                    # Offer troubleshooting
+                    if self.ask_yes_no("Would you like to see logs for failed services?", "y"):
+                        self._show_service_logs(failed_services)
+                
+                # Show service URLs
+                self.print_urls(selected_services)
+                
+            else:
+                self.print_colored("❌ Could not check service status", Colors.RED)
+                if result.stderr:
+                    print(result.stderr)
+                    
+        except Exception as e:
+            self.print_colored(f"❌ Error checking service status: {e}", Colors.RED)
+
+    def _show_service_logs(self, failed_services: List[tuple]):
+        """Show logs for failed services"""
+        compose_cmd = getattr(self, 'compose_command', 'docker compose')
+        
+        for service_name, _ in failed_services:
+            self.print_colored(f"\n📋 Logs for {service_name}:", Colors.CYAN)
+            
+            try:
+                cmd = compose_cmd.split() + ['logs', '--tail', '20', service_name]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    result = subprocess.run(['sudo'] + cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    print(result.stdout)
+                else:
+                    self.print_colored(f"Could not get logs for {service_name}", Colors.RED)
+                    
+            except Exception as e:
+                self.print_colored(f"Error getting logs: {e}", Colors.RED)
+
+    def _show_next_steps(self, selected_services: List[str]):
+        """Show next steps and useful commands"""
+        compose_cmd = getattr(self, 'compose_command', 'docker compose')
+        
+        print()
+        self.print_colored("📊 Useful Commands:", Colors.CYAN)
+        self.print_colored(f"{compose_cmd} ps          # Check service status", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} logs -f     # View live logs", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} logs [service]  # View specific service logs", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} restart [service]  # Restart a service", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} down        # Stop all services", Colors.WHITE)
+        
+        print()
+        self.print_colored("⚙️ Next Steps:", Colors.CYAN)
+        print(f"  1. Configure your download clients to use the correct category folders")
+        print(f"  2. Set up your *arr apps to monitor the correct media folders")
+
     def run(self):
         self.print_header("Simple Docker Compose Generator")
         
@@ -1404,33 +1594,14 @@ SERVER_COUNTRIES=Netherlands
         
         self.print_colored("\n✅ Setup complete!", Colors.GREEN)
         
-        # Show Docker commands based on user's group membership
-        print()
-        self.print_colored("🚀 Start your media stack:", Colors.CYAN)
-        
-        # Use the detected compose command
-        compose_cmd = getattr(self, 'compose_command', 'docker compose')
-        
-        # Check if user is in docker group
-        try:
-            import grp
-            docker_group = grp.getgrnam('docker')
-            current_user = os.environ.get('USER')
-            if current_user in docker_group.gr_mem:
-                self.print_colored(f"{compose_cmd} up -d", Colors.WHITE)
+        # Ask if user wants to start the services
+        if self.ask_yes_no("Would you like to start the Docker Compose stack now?", "y"):
+            if self._start_compose_stack(services):
+                self._verify_services_running(services)
             else:
-                self.print_colored(f"sudo {compose_cmd} up -d", Colors.WHITE)
-                self.print_colored("(Note: Run 'newgrp docker' first to avoid needing sudo)", Colors.YELLOW)
-        except (KeyError, ImportError):
-            self.print_colored(f"{compose_cmd} up -d", Colors.WHITE)
+                self.print_colored("❌ Failed to start services. See troubleshooting below.", Colors.RED)
         
-        print()
-        self.print_colored("📊 Monitor your stack:", Colors.CYAN)
-        self.print_colored(f"{compose_cmd} ps          # Check service status", Colors.WHITE)
-        self.print_colored(f"{compose_cmd} logs -f     # View logs", Colors.WHITE)
-        self.print_colored(f"{compose_cmd} down        # Stop all services", Colors.WHITE)
-        
-        self.print_urls(services)
+        self._show_next_steps(services)
 
 if __name__ == "__main__":
     try:

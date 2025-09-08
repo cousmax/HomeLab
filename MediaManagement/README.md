@@ -20,6 +20,8 @@ This script will:
 - ✅ **Interactive confirmations** at each major step
 - ✅ **Retry capability** for failed configurations
 - ✅ **Network share mounting** with error recovery
+- ✅ **Automatic service startup** with verification
+- ✅ **Service health monitoring** and troubleshooting
 - ✅ Provide service URLs and next steps
 
 ### **Manual Setup**
@@ -183,6 +185,33 @@ Let's reconfigure the network share...
 🔍 Testing connectivity to NFS server 192.168.1.100...
 ✓ NFS share mounted successfully!
 ✓ Mount verification successful - read/write working
+```
+
+### **Automated Service Startup**
+
+The script can now automatically start your Docker Compose stack:
+
+- **Smart Group Handling** - Detects docker group membership and uses `newgrp docker` when needed
+- **Service Verification** - Checks that all selected services are running properly
+- **Health Monitoring** - Reports status of each service with clear indicators
+- **Troubleshooting Logs** - Shows logs for any services that fail to start
+- **Fallback Options** - Uses sudo when docker group access isn't working
+
+### **Service Status Verification**
+
+```text
+🔍 Verifying services are running...
+
+✅ Running services:
+  ✓ sonarr
+  ✓ radarr
+  ✓ qbittorrent
+  ✓ prowlarr
+
+📊 Useful Commands:
+docker compose ps          # Check service status
+docker compose logs -f     # View live logs
+docker compose restart [service]  # Restart a service
 ```
 
 ## 🔒 VPN Configuration (Optional)
