@@ -88,16 +88,55 @@ class MediaStackMaintenance:
     def _run_compose_command(self, args: List[str], use_sudo: bool = False) -> subprocess.CompletedProcess:
         """Run docker compose command with optional sudo"""
         cmd = self.compose_command.split() + args
+        
+        # First try without sudo if not explicitly requested
+        if not use_sudo:
+            try:
+                return subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            except subprocess.CalledProcessError as e:
+                # Check if it's a permission error
+                if "permission denied" in e.stderr.lower() or "dial unix" in e.stderr.lower():
+                    self.print_colored("Permission denied, trying with sudo...", Colors.YELLOW)
+                    use_sudo = True
+                else:
+                    # For other errors, show the actual error message
+                    error_details = e.stderr.strip() if e.stderr.strip() else e.stdout.strip()
+                    if error_details:
+                        self.print_colored(f"Docker compose error: {error_details}", Colors.RED)
+                    raise
+        
+        # Try with sudo if requested or permission was denied
         if use_sudo:
             cmd = ['sudo'] + cmd
-        
+            try:
+                return subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            except subprocess.CalledProcessError as e:
+                # Show detailed error for sudo failures
+                error_details = e.stderr.strip() if e.stderr.strip() else e.stdout.strip()
+                if "no such file or directory" in error_details.lower():
+                    raise Exception("docker-compose.yml not found in current directory")
+                elif "no configuration file provided" in error_details.lower():
+                    raise Exception("No docker-compose.yml found. Make sure you're in the right directory.")
+                else:
+                    raise Exception(f"Docker compose failed: {error_details}")
+            except subprocess.TimeoutExpired:
+                raise Exception("Docker compose command timed out")
+
+    def _check_docker_permissions(self) -> bool:
+        """Check if user can run Docker without sudo"""
         try:
-            return subprocess.run(cmd, capture_output=True, text=True, check=True)
-        except subprocess.CalledProcessError:
-            # Try with sudo if initial attempt fails
-            if not use_sudo:
-                return self._run_compose_command(args, use_sudo=True)
-            raise
+            result = subprocess.run(['docker', 'version'], capture_output=True, text=True, timeout=5)
+            return result.returncode == 0
+        except:
+            return False
+
+    def _check_user_in_docker_group(self) -> bool:
+        """Check if current user is in docker group"""
+        try:
+            result = subprocess.run(['groups'], capture_output=True, text=True)
+            return 'docker' in result.stdout
+        except:
+            return False
 
     def check_stack_health(self) -> Dict[str, str]:
         """Check health of all services"""
@@ -128,11 +167,21 @@ class MediaStackMaintenance:
             
             self.log_action("Health Check", "FAILED", "Docker not available")
             return {}
+
+        # Check Docker permissions
+        if not self._check_docker_permissions():
+            if not self._check_user_in_docker_group():
+                self.print_colored("⚠ User not in docker group. This may require sudo for Docker commands.", Colors.YELLOW)
+                self.print_colored("To fix this, run: sudo usermod -aG docker $USER && newgrp docker", Colors.BLUE)
         
         # Check if we're in a directory with docker-compose.yml
-        if not os.path.exists('docker-compose.yml') and not os.path.exists('../docker-compose.yml'):
+        compose_files = ['docker-compose.yml', 'docker-compose.yaml', '../docker-compose.yml', '../docker-compose.yaml']
+        compose_file_found = any(os.path.exists(f) for f in compose_files)
+        
+        if not compose_file_found:
             self.print_colored("❌ No docker-compose.yml found in current or parent directory", Colors.RED)
             self.print_colored("Please run this from your media stack directory", Colors.YELLOW)
+            self.print_colored("Looking for: docker-compose.yml or docker-compose.yaml", Colors.BLUE)
             self.log_action("Health Check", "FAILED", "No docker-compose.yml found")
             return {}
         
@@ -496,6 +545,7 @@ class MediaStackMaintenance:
                 ("8", "Full maintenance (all tasks)", self.full_maintenance),
                 ("9", "Show maintenance log", self.show_maintenance_log),
                 ("d", "Docker diagnostics", self.docker_diagnostics),
+                ("f", "Fix Docker permissions", self.fix_docker_permissions),
                 ("q", "Quit", None)
             ]
             
@@ -519,28 +569,116 @@ class MediaStackMaintenance:
                     self.print_colored("Invalid option", Colors.RED)
                     time.sleep(1)
 
+    def fix_docker_permissions(self):
+        """Help fix Docker permissions for the current user"""
+        self.print_colored("🔧 Docker Permissions Fix", Colors.CYAN)
+        
+        # Check current status
+        can_run_docker = self._check_docker_permissions()
+        in_docker_group = self._check_user_in_docker_group()
+        
+        self.print_colored(f"Current user can run Docker without sudo: {'✅' if can_run_docker else '❌'}", 
+                          Colors.GREEN if can_run_docker else Colors.RED)
+        self.print_colored(f"Current user is in docker group: {'✅' if in_docker_group else '❌'}", 
+                          Colors.GREEN if in_docker_group else Colors.RED)
+        
+        if can_run_docker:
+            self.print_colored("✅ Docker permissions are already correct!", Colors.GREEN)
+            return
+        
+        if not in_docker_group:
+            self.print_colored("\n🔨 To fix Docker permissions:", Colors.YELLOW)
+            self.print_colored("1. Add your user to the docker group:", Colors.BLUE)
+            self.print_colored("   sudo usermod -aG docker $USER", Colors.WHITE)
+            self.print_colored("\n2. Apply the group changes:", Colors.BLUE)
+            self.print_colored("   newgrp docker", Colors.WHITE)
+            self.print_colored("\n3. Or logout and login again", Colors.BLUE)
+            
+            if self.ask_yes_no("\nWould you like me to run these commands for you?", "y"):
+                try:
+                    # Add user to docker group
+                    self.print_colored("Adding user to docker group...", Colors.BLUE)
+                    result = subprocess.run(['sudo', 'usermod', '-aG', 'docker', os.getenv('USER', 'ubuntu')], 
+                                          capture_output=True, text=True)
+                    if result.returncode == 0:
+                        self.print_colored("✅ User added to docker group", Colors.GREEN)
+                        self.print_colored("⚠ You need to logout/login or run 'newgrp docker' for changes to take effect", Colors.YELLOW)
+                    else:
+                        self.print_colored(f"❌ Failed to add user to docker group: {result.stderr}", Colors.RED)
+                        
+                except Exception as e:
+                    self.print_colored(f"❌ Error: {e}", Colors.RED)
+        else:
+            self.print_colored("User is in docker group but Docker commands still fail.", Colors.YELLOW)
+            self.print_colored("Try running: newgrp docker", Colors.BLUE)
+            self.print_colored("Or logout and login again.", Colors.BLUE)
+
     def docker_diagnostics(self):
         """Run Docker diagnostics to help troubleshoot issues"""
         self.print_colored("🔍 Docker Diagnostics", Colors.CYAN)
         
+        # Check permissions first
+        self.print_colored("\n--- Docker Permissions ---", Colors.YELLOW)
+        can_run_docker = self._check_docker_permissions()
+        in_docker_group = self._check_user_in_docker_group()
+        
+        self.print_colored(f"Can run Docker without sudo: {'✅ Yes' if can_run_docker else '❌ No'}", 
+                          Colors.GREEN if can_run_docker else Colors.RED)
+        self.print_colored(f"User in docker group: {'✅ Yes' if in_docker_group else '❌ No'}", 
+                          Colors.GREEN if in_docker_group else Colors.RED)
+        
+        # Check compose file
+        self.print_colored("\n--- Compose File ---", Colors.YELLOW)
+        compose_files = ['docker-compose.yml', 'docker-compose.yaml', '../docker-compose.yml', '../docker-compose.yaml']
+        for compose_file in compose_files:
+            if os.path.exists(compose_file):
+                self.print_colored(f"✅ Found: {compose_file}", Colors.GREEN)
+                break
+        else:
+            self.print_colored("❌ No docker-compose.yml found", Colors.RED)
+        
+        # Standard Docker diagnostics
         diagnostics = [
             ("Docker version", ['docker', '--version']),
-            ("Docker info", ['docker', 'info']),
-            ("Compose version", ['docker', 'compose', 'version']),
-            ("Running containers", ['docker', 'ps']),
+            ("Docker info", ['docker', 'info', '--format', '{{.ServerVersion}}']),
+            ("Compose version", self.compose_command.split() + ['version']),
+            ("Running containers", ['docker', 'ps', '--format', 'table {{.Names}}\t{{.Status}}']),
             ("Docker system info", ['docker', 'system', 'df'])
         ]
         
         for test_name, command in diagnostics:
             self.print_colored(f"\n--- {test_name} ---", Colors.YELLOW)
             try:
+                # Try without sudo first
                 result = subprocess.run(command, capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
                     self.print_colored("✅ Success", Colors.GREEN)
-                    print(result.stdout.strip())
+                    output = result.stdout.strip()
+                    if output:
+                        print(output)
+                    else:
+                        print("(No output)")
                 else:
-                    self.print_colored("❌ Failed", Colors.RED)
-                    print(result.stderr.strip())
+                    # Try with sudo if it failed
+                    if not can_run_docker:
+                        sudo_command = ['sudo'] + command
+                        result = subprocess.run(sudo_command, capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            self.print_colored("✅ Success (with sudo)", Colors.GREEN)
+                            output = result.stdout.strip()
+                            if output:
+                                print(output)
+                            else:
+                                print("(No output)")
+                        else:
+                            self.print_colored("❌ Failed (even with sudo)", Colors.RED)
+                            if result.stderr.strip():
+                                print(result.stderr.strip())
+                    else:
+                        self.print_colored("❌ Failed", Colors.RED)
+                        if result.stderr.strip():
+                            print(result.stderr.strip())
+                            
             except FileNotFoundError:
                 self.print_colored("❌ Command not found", Colors.RED)
             except subprocess.TimeoutExpired:
@@ -613,7 +751,8 @@ class MediaStackMaintenance:
                 'logs': self.show_service_logs,
                 'full': self.full_maintenance,
                 'log': self.show_maintenance_log,
-                'diagnostics': self.docker_diagnostics
+                'diagnostics': self.docker_diagnostics,
+                'fix-permissions': self.fix_docker_permissions
             }
             
             if command in commands:
