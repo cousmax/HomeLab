@@ -34,6 +34,28 @@ This script will:
 python3 generate-compose-simple.py
 ```
 
+### Maintenance Script (`maintain-stack.py`)
+**Comprehensive maintenance** - Keep your stack healthy and up-to-date
+- **Health monitoring** - Check service status and container health
+- **Automatic updates** - Pull latest images and restart services
+- **System cleanup** - Remove unused containers, images, volumes, networks
+- **Configuration backup** - Automated backups with rotation (keeps last 5)
+- **Disk usage monitoring** - Track space usage and clean large logs
+- **Service log viewing** - Interactive log browser for troubleshooting
+- **Full maintenance mode** - Run all tasks automatically
+
+```bash
+# Interactive menu
+python3 maintain-stack.py
+
+# Command line usage
+python3 maintain-stack.py health    # Check service health
+python3 maintain-stack.py update    # Update container images  
+python3 maintain-stack.py cleanup   # Clean up system
+python3 maintain-stack.py backup    # Backup configurations
+python3 maintain-stack.py full      # Run all maintenance tasks
+```
+
 ### System Setup (`install-docker-and-update-os.sh`)
 **Standalone installer** - Used by main script but can run independently
 - Installs Docker and Docker Compose

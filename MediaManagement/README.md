@@ -24,6 +24,24 @@ This script will:
 - ✅ **Service health monitoring** and troubleshooting
 - ✅ Provide service URLs and next steps
 
+### **Maintenance**
+
+Keep your stack healthy with the maintenance script:
+
+```bash
+# Interactive maintenance menu
+python3 scripts/maintain-stack.py
+
+# Quick health check
+python3 scripts/maintain-stack.py health
+
+# Update containers
+python3 scripts/maintain-stack.py update
+
+# Full maintenance (all tasks)
+python3 scripts/maintain-stack.py full
+```
+
 ### **Manual Setup**
 
 ```bash
