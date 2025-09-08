@@ -496,6 +496,78 @@ volumes:
             vpn_status = "enabled" if self.use_vpn else "disabled"
             self.print_colored(f"ℹ️ VPN routing: {vpn_status}", Colors.BLUE)
 
+    def check_and_install_docker(self):
+        """Check if Docker is installed and offer to install if needed"""
+        self.print_colored("🐳 Checking Docker installation...", Colors.BLUE)
+        
+        # Check if Docker is installed and running
+        try:
+            result = subprocess.run(['docker', '--version'], capture_output=True, text=True, check=True)
+            docker_version = result.stdout.strip()
+            self.print_colored(f"✓ Docker found: {docker_version}", Colors.GREEN)
+            
+            # Check if Docker daemon is running
+            try:
+                subprocess.run(['docker', 'info'], capture_output=True, text=True, check=True, timeout=5)
+                self.print_colored("✓ Docker daemon is running", Colors.GREEN)
+                return True
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                self.print_colored("⚠ Docker is installed but daemon is not running", Colors.YELLOW)
+                self.print_colored("Try starting Docker: sudo systemctl start docker", Colors.WHITE)
+                return False
+                
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            self.print_colored("❌ Docker is not installed", Colors.RED)
+            
+            # Offer to install Docker
+            install_docker = self.ask_yes_no("Would you like to install Docker automatically?", "y")
+            
+            if install_docker:
+                return self._install_docker()
+            else:
+                self.print_colored("Please install Docker manually and run this script again.", Colors.YELLOW)
+                self.print_colored("Installation guide: https://docs.docker.com/engine/install/", Colors.BLUE)
+                return False
+    
+    def _install_docker(self):
+        """Install Docker using the bash script"""
+        try:
+            # Find the Docker installation script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            install_script = os.path.join(script_dir, "install-docker-and-update-os.sh")
+            
+            if not os.path.exists(install_script):
+                self.print_colored("❌ Docker installation script not found", Colors.RED)
+                self.print_colored(f"Expected location: {install_script}", Colors.WHITE)
+                return False
+            
+            # Make script executable
+            os.chmod(install_script, 0o755)
+            
+            self.print_colored("🚀 Running Docker installation script...", Colors.CYAN)
+            self.print_colored("This may take a few minutes and will require sudo privileges.", Colors.YELLOW)
+            
+            # Run the installation script
+            result = subprocess.run(['bash', install_script], text=True)
+            
+            if result.returncode == 0:
+                self.print_colored("✓ Docker installation completed!", Colors.GREEN)
+                self.print_colored("", Colors.WHITE)
+                self.print_colored("⚠ IMPORTANT: You need to log out and back in for Docker group changes to take effect", Colors.YELLOW)
+                self.print_colored("   Or run: newgrp docker", Colors.WHITE)
+                self.print_colored("", Colors.WHITE)
+                
+                # Ask if user wants to continue or restart
+                continue_setup = self.ask_yes_no("Continue with compose generation? (Docker commands will need sudo)", "y")
+                return continue_setup
+            else:
+                self.print_colored("❌ Docker installation failed", Colors.RED)
+                return False
+                
+        except Exception as e:
+            self.print_colored(f"❌ Error running Docker installation: {e}", Colors.RED)
+            return False
+
     def create_directories(self, selected_services: List[str]):
         """
         Create directories using Trash Guides recommended structure for optimal hardlinks
@@ -776,6 +848,11 @@ SERVER_COUNTRIES=Netherlands
     def run(self):
         self.print_header("Simple Docker Compose Generator")
         
+        # Check Docker installation first
+        if not self.check_and_install_docker():
+            self.print_colored("❌ Docker is required to continue. Exiting.", Colors.RED)
+            return
+        
         self.configure()
         services = self.select_services()
         
@@ -787,8 +864,30 @@ SERVER_COUNTRIES=Netherlands
         self.create_directories(services)
         self.save_env_file()
         
-        self.print_colored("\n✓ Setup complete!", Colors.GREEN)
-        self.print_colored("Run: docker-compose up -d", Colors.WHITE)
+        self.print_colored("\n✅ Setup complete!", Colors.GREEN)
+        
+        # Show Docker commands based on user's group membership
+        print()
+        self.print_colored("🚀 Start your media stack:", Colors.CYAN)
+        
+        # Check if user is in docker group
+        try:
+            import grp
+            docker_group = grp.getgrnam('docker')
+            current_user = os.environ.get('USER')
+            if current_user in docker_group.gr_mem:
+                self.print_colored("docker-compose up -d", Colors.WHITE)
+            else:
+                self.print_colored("sudo docker-compose up -d", Colors.WHITE)
+                self.print_colored("(Note: Run 'newgrp docker' first to avoid needing sudo)", Colors.YELLOW)
+        except (KeyError, ImportError):
+            self.print_colored("docker-compose up -d", Colors.WHITE)
+        
+        print()
+        self.print_colored("📊 Monitor your stack:", Colors.CYAN)
+        self.print_colored("docker-compose ps          # Check service status", Colors.WHITE)
+        self.print_colored("docker-compose logs -f     # View logs", Colors.WHITE)
+        self.print_colored("docker-compose down        # Stop all services", Colors.WHITE)
         
         self.print_urls(services)
 
