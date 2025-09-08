@@ -54,15 +54,36 @@ class MediaStackMaintenance:
 
     def _detect_compose_command(self) -> str:
         """Detect the correct Docker Compose command"""
-        try:
-            subprocess.run(['docker', 'compose', 'version'], capture_output=True, check=True)
-            return 'docker compose'
-        except:
+        commands_to_try = [
+            ['docker', 'compose', 'version'],
+            ['docker-compose', 'version'],
+            ['podman-compose', 'version']
+        ]
+        
+        for cmd in commands_to_try:
             try:
-                subprocess.run(['docker-compose', 'version'], capture_output=True, check=True)
-                return 'docker-compose'
+                result = subprocess.run(cmd, capture_output=True, check=True, timeout=10)
+                if cmd[0] == 'docker' and cmd[1] == 'compose':
+                    return 'docker compose'
+                elif cmd[0] == 'docker-compose':
+                    return 'docker-compose'
+                elif cmd[0] == 'podman-compose':
+                    return 'podman-compose'
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+        
+        # If none work, try to detect Docker Desktop on Windows
+        if os.name == 'nt':  # Windows
+            try:
+                # Check if Docker Desktop is running
+                result = subprocess.run(['docker', 'version'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    return 'docker compose'
             except:
-                return 'docker compose'  # Default fallback
+                pass
+        
+        self.print_colored("⚠ Warning: Docker Compose not detected. Using 'docker compose' as fallback.", Colors.YELLOW)
+        return 'docker compose'
 
     def _run_compose_command(self, args: List[str], use_sudo: bool = False) -> subprocess.CompletedProcess:
         """Run docker compose command with optional sudo"""
@@ -82,25 +103,94 @@ class MediaStackMaintenance:
         """Check health of all services"""
         self.print_colored("🔍 Checking service health...", Colors.CYAN)
         
+        # First check if Docker is available
         try:
-            result = self._run_compose_command(['ps', '--format', 'json'])
-            services = json.loads(result.stdout)
+            subprocess.run(['docker', '--version'], capture_output=True, check=True, timeout=5)
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            self.print_colored("❌ Docker is not installed or not running", Colors.RED)
+            
+            # On Windows, check if Docker Desktop might be installed but not running
+            if os.name == 'nt':
+                docker_desktop_paths = [
+                    r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+                    r"C:\Users\Public\Desktop\Docker Desktop.lnk",
+                    os.path.expanduser(r"~\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Docker Desktop.lnk")
+                ]
+                
+                docker_installed = any(os.path.exists(path) for path in docker_desktop_paths)
+                if docker_installed:
+                    self.print_colored("Docker Desktop appears to be installed but not running", Colors.YELLOW)
+                    self.print_colored("Please start Docker Desktop and try again", Colors.BLUE)
+                else:
+                    self.print_colored("Please install Docker Desktop from https://docker.com/products/docker-desktop", Colors.YELLOW)
+            else:
+                self.print_colored("Please install Docker and ensure the Docker service is running", Colors.YELLOW)
+            
+            self.log_action("Health Check", "FAILED", "Docker not available")
+            return {}
+        
+        # Check if we're in a directory with docker-compose.yml
+        if not os.path.exists('docker-compose.yml') and not os.path.exists('../docker-compose.yml'):
+            self.print_colored("❌ No docker-compose.yml found in current or parent directory", Colors.RED)
+            self.print_colored("Please run this from your media stack directory", Colors.YELLOW)
+            self.log_action("Health Check", "FAILED", "No docker-compose.yml found")
+            return {}
+        
+        try:
+            # First try with JSON format
+            try:
+                result = self._run_compose_command(['ps', '--format', 'json'])
+                # Clean the output - sometimes there's extra text
+                json_output = result.stdout.strip()
+                
+                # Handle case where output might have multiple JSON objects
+                if json_output.startswith('['):
+                    services = json.loads(json_output)
+                else:
+                    # Try to parse as individual JSON objects (one per line)
+                    lines = [line.strip() for line in json_output.split('\n') if line.strip()]
+                    services = []
+                    for line in lines:
+                        try:
+                            services.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            # Skip non-JSON lines
+                            continue
+                
+            except (json.JSONDecodeError, subprocess.CalledProcessError):
+                # Fallback to table format and parse manually
+                self.print_colored("JSON format failed, using table format...", Colors.YELLOW)
+                result = self._run_compose_command(['ps'])
+                services = self._parse_compose_table(result.stdout)
             
             service_status = {}
-            for service in services:
-                name = service.get('Service', service.get('Name', 'unknown'))
-                state = service.get('State', 'unknown')
-                health = service.get('Health', 'unknown')
+            if not services:
+                self.print_colored("No services found or stack not running", Colors.YELLOW)
+                self.print_colored("Try starting your stack with: docker-compose up -d", Colors.BLUE)
+                return {}
                 
-                if state == 'running':
-                    if health == 'healthy':
+            for service in services:
+                if isinstance(service, dict):
+                    name = service.get('Service', service.get('Name', service.get('service', 'unknown')))
+                    state = service.get('State', service.get('status', 'unknown'))
+                    health = service.get('Health', service.get('health', 'unknown'))
+                else:
+                    # Fallback for parsed table format
+                    name = service.get('name', 'unknown')
+                    state = service.get('state', 'unknown') 
+                    health = service.get('health', 'unknown')
+                
+                if 'running' in state.lower() or 'up' in state.lower():
+                    if 'healthy' in health.lower():
                         status = 'healthy'
-                    elif health == 'unhealthy':
+                    elif 'unhealthy' in health.lower():
                         status = 'unhealthy'
                     else:
                         status = 'running'
-                else:
+                elif 'exit' in state.lower() or 'stop' in state.lower():
                     status = 'stopped'
+                else:
+                    status = state.lower()
                 
                 service_status[name] = status
             
@@ -118,9 +208,45 @@ class MediaStackMaintenance:
             return service_status
             
         except Exception as e:
-            self.print_colored(f"❌ Health check failed: {e}", Colors.RED)
-            self.log_action("Health Check", "FAILED", str(e))
+            error_msg = str(e)
+            if "The system cannot find the file specified" in error_msg:
+                self.print_colored("❌ Docker command not found", Colors.RED)
+                self.print_colored("Please ensure Docker Desktop is installed and running", Colors.YELLOW)
+            else:
+                self.print_colored(f"❌ Health check failed: {error_msg}", Colors.RED)
+            self.log_action("Health Check", "FAILED", error_msg)
             return {}
+
+    def _parse_compose_table(self, output: str) -> List[Dict[str, str]]:
+        """Parse docker-compose ps table output as fallback"""
+        services = []
+        lines = output.strip().split('\n')
+        
+        # Skip header lines and empty lines
+        data_lines = [line for line in lines if line.strip() and not line.startswith('NAME') and not line.startswith('Container')]
+        
+        for line in data_lines:
+            # Parse table format: NAME    IMAGE    COMMAND    CREATED    STATUS    PORTS
+            parts = line.split()
+            if len(parts) >= 4:
+                name = parts[0]
+                # Status is usually in parts[4] or later, look for 'Up' or 'Exited'
+                status = 'unknown'
+                for part in parts[4:]:
+                    if 'Up' in part or 'running' in part.lower():
+                        status = 'running'
+                        break
+                    elif 'Exit' in part or 'stop' in part.lower():
+                        status = 'stopped' 
+                        break
+                
+                services.append({
+                    'name': name,
+                    'state': status,
+                    'health': 'unknown'
+                })
+        
+        return services
 
     def update_containers(self):
         """Update all container images"""
@@ -369,6 +495,7 @@ class MediaStackMaintenance:
                 ("7", "Show service logs", self.show_service_logs),
                 ("8", "Full maintenance (all tasks)", self.full_maintenance),
                 ("9", "Show maintenance log", self.show_maintenance_log),
+                ("d", "Docker diagnostics", self.docker_diagnostics),
                 ("q", "Quit", None)
             ]
             
@@ -391,6 +518,35 @@ class MediaStackMaintenance:
                 if choice != 'q':
                     self.print_colored("Invalid option", Colors.RED)
                     time.sleep(1)
+
+    def docker_diagnostics(self):
+        """Run Docker diagnostics to help troubleshoot issues"""
+        self.print_colored("🔍 Docker Diagnostics", Colors.CYAN)
+        
+        diagnostics = [
+            ("Docker version", ['docker', '--version']),
+            ("Docker info", ['docker', 'info']),
+            ("Compose version", ['docker', 'compose', 'version']),
+            ("Running containers", ['docker', 'ps']),
+            ("Docker system info", ['docker', 'system', 'df'])
+        ]
+        
+        for test_name, command in diagnostics:
+            self.print_colored(f"\n--- {test_name} ---", Colors.YELLOW)
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    self.print_colored("✅ Success", Colors.GREEN)
+                    print(result.stdout.strip())
+                else:
+                    self.print_colored("❌ Failed", Colors.RED)
+                    print(result.stderr.strip())
+            except FileNotFoundError:
+                self.print_colored("❌ Command not found", Colors.RED)
+            except subprocess.TimeoutExpired:
+                self.print_colored("❌ Timeout", Colors.RED)
+            except Exception as e:
+                self.print_colored(f"❌ Error: {e}", Colors.RED)
 
     def full_maintenance(self):
         """Run all maintenance tasks"""
@@ -456,7 +612,8 @@ class MediaStackMaintenance:
                 'disk': self.check_disk_usage,
                 'logs': self.show_service_logs,
                 'full': self.full_maintenance,
-                'log': self.show_maintenance_log
+                'log': self.show_maintenance_log,
+                'diagnostics': self.docker_diagnostics
             }
             
             if command in commands:
