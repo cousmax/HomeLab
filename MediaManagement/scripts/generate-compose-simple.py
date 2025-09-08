@@ -31,6 +31,7 @@ class SimpleComposeGenerator:
             "domain": "localhost",
             "firewall_vpn_input_ports": "12345"
         }
+        self.compose_command = "docker compose"  # Default to modern syntax
         
     def print_colored(self, text: str, color: str = Colors.NC):
         print(f"{color}{text}{Colors.NC}")
@@ -510,6 +511,9 @@ volumes:
             try:
                 subprocess.run(['docker', 'info'], capture_output=True, text=True, check=True, timeout=5)
                 self.print_colored("✓ Docker daemon is running", Colors.GREEN)
+                
+                # Check Docker Compose availability
+                self._check_docker_compose()
                 return True
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 self.print_colored("⚠ Docker is installed but daemon is not running", Colors.YELLOW)
@@ -528,6 +532,44 @@ volumes:
                 self.print_colored("Please install Docker manually and run this script again.", Colors.YELLOW)
                 self.print_colored("Installation guide: https://docs.docker.com/engine/install/", Colors.BLUE)
                 return False
+    
+    def _check_docker_compose(self):
+        """Check Docker Compose availability and set the right command"""
+        # Check for Docker Compose plugin (modern way)
+        try:
+            result = subprocess.run(['docker', 'compose', 'version'], capture_output=True, text=True, check=True)
+            self.compose_command = "docker compose"
+            self.print_colored("✓ Docker Compose plugin available", Colors.GREEN)
+            return True
+        except subprocess.CalledProcessError:
+            pass
+        
+        # Check for standalone docker-compose (legacy)
+        try:
+            result = subprocess.run(['docker-compose', '--version'], capture_output=True, text=True, check=True)
+            self.compose_command = "docker-compose"
+            self.print_colored("✓ Docker Compose standalone available", Colors.GREEN)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+        
+        # Neither available - provide installation instructions
+        self.print_colored("⚠ Docker Compose not found", Colors.YELLOW)
+        self.print_colored("Installing Docker Compose...", Colors.BLUE)
+        
+        # Try to install docker-compose via apt (Ubuntu/Debian)
+        try:
+            result = subprocess.run(['sudo', 'apt', 'install', '-y', 'docker-compose'], 
+                                  capture_output=True, text=True, check=True)
+            self.compose_command = "docker-compose"
+            self.print_colored("✓ Docker Compose installed successfully", Colors.GREEN)
+            return True
+        except subprocess.CalledProcessError:
+            self.print_colored("❌ Failed to install docker-compose automatically", Colors.RED)
+            self.print_colored("Please install manually:", Colors.YELLOW)
+            self.print_colored("sudo apt install docker-compose", Colors.WHITE)
+            self.compose_command = "docker compose"  # Default to plugin syntax
+            return False
     
     def _install_docker(self):
         """Install Docker using the bash script"""
@@ -870,24 +912,27 @@ SERVER_COUNTRIES=Netherlands
         print()
         self.print_colored("🚀 Start your media stack:", Colors.CYAN)
         
+        # Use the detected compose command
+        compose_cmd = getattr(self, 'compose_command', 'docker compose')
+        
         # Check if user is in docker group
         try:
             import grp
             docker_group = grp.getgrnam('docker')
             current_user = os.environ.get('USER')
             if current_user in docker_group.gr_mem:
-                self.print_colored("docker-compose up -d", Colors.WHITE)
+                self.print_colored(f"{compose_cmd} up -d", Colors.WHITE)
             else:
-                self.print_colored("sudo docker-compose up -d", Colors.WHITE)
+                self.print_colored(f"sudo {compose_cmd} up -d", Colors.WHITE)
                 self.print_colored("(Note: Run 'newgrp docker' first to avoid needing sudo)", Colors.YELLOW)
         except (KeyError, ImportError):
-            self.print_colored("docker-compose up -d", Colors.WHITE)
+            self.print_colored(f"{compose_cmd} up -d", Colors.WHITE)
         
         print()
         self.print_colored("📊 Monitor your stack:", Colors.CYAN)
-        self.print_colored("docker-compose ps          # Check service status", Colors.WHITE)
-        self.print_colored("docker-compose logs -f     # View logs", Colors.WHITE)
-        self.print_colored("docker-compose down        # Stop all services", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} ps          # Check service status", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} logs -f     # View logs", Colors.WHITE)
+        self.print_colored(f"{compose_cmd} down        # Stop all services", Colors.WHITE)
         
         self.print_urls(services)
 
