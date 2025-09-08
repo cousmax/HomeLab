@@ -398,23 +398,99 @@ volumes:
         self.print_colored("✓ Generated docker-compose.yml", Colors.GREEN)
 
     def create_directories(self, selected_services: List[str]):
-        # Create base directories
-        Path(self.config["data_path"]).mkdir(parents=True, exist_ok=True)
-        Path(self.config["config_path"]).mkdir(parents=True, exist_ok=True)
+        import subprocess
+        import os
         
-        # Create data subdirectories based on your existing structure
-        data_subdirs = [
-            "media/movies", "media/tv", "media/music", 
-            "torrents", "usenet", "youtube", "downloads"
-        ]
-        for subdir in data_subdirs:
-            Path(f"{self.config['data_path']}/{subdir}").mkdir(parents=True, exist_ok=True)
+        # Check if we need to use the setup script for system directories
+        data_path = self.config["data_path"]
+        
+        if data_path.startswith("/mnt") or data_path.startswith("/media"):
+            self.print_colored("🔧 System directory detected, using setup script...", Colors.YELLOW)
             
-        # Create service config directories  
-        for service in selected_services:
-            Path(f"./{service}").mkdir(parents=True, exist_ok=True)
+            # Find the setup script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            setup_script = os.path.join(script_dir, "setup-media-directories.sh")
             
-        self.print_colored("✓ Created directories", Colors.GREEN)
+            if os.path.exists(setup_script):
+                try:
+                    # Make the script executable
+                    os.chmod(setup_script, 0o755)
+                    
+                    # Run the setup script with sudo if needed
+                    user = os.environ.get('USER', 'root')
+                    group = os.environ.get('USER', 'root')
+                    
+                    self.print_colored(f"Running: sudo {setup_script} {data_path} {user} {group}", Colors.BLUE)
+                    result = subprocess.run([
+                        'sudo', setup_script, data_path, user, group
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        self.print_colored("✓ System directories created successfully", Colors.GREEN)
+                    else:
+                        self.print_colored(f"⚠ Setup script returned code {result.returncode}", Colors.YELLOW)
+                        self.print_colored(f"Output: {result.stdout}", Colors.WHITE)
+                        if result.stderr:
+                            self.print_colored(f"Error: {result.stderr}", Colors.RED)
+                        
+                        # Fall back to manual creation
+                        self.print_colored("Attempting manual directory creation...", Colors.YELLOW)
+                        self._create_directories_manual(selected_services)
+                        
+                except Exception as e:
+                    self.print_colored(f"⚠ Could not run setup script: {e}", Colors.YELLOW)
+                    self.print_colored("Please run the following manually:", Colors.BLUE)
+                    self.print_colored(f"sudo {setup_script} {data_path} {user} {group}", Colors.WHITE)
+                    
+                    # Fall back to manual creation in current directory
+                    self.print_colored("Creating directories in current directory as fallback...", Colors.YELLOW)
+                    self.config["data_path"] = "./data"
+                    self._create_directories_manual(selected_services)
+            else:
+                self.print_colored("⚠ Setup script not found, using manual creation", Colors.YELLOW)
+                self._create_directories_manual(selected_services)
+        else:
+            # Regular directory creation for non-system paths
+            self._create_directories_manual(selected_services)
+    
+    def _create_directories_manual(self, selected_services: List[str]):
+        """Manual directory creation with error handling"""
+        try:
+            # Create base directories
+            Path(self.config["data_path"]).mkdir(parents=True, exist_ok=True)
+            Path(self.config["config_path"]).mkdir(parents=True, exist_ok=True)
+            
+            # Create data subdirectories based on your existing structure
+            data_subdirs = [
+                "media/movies", "media/tv", "media/music", 
+                "torrents", "usenet", "youtube", "downloads"
+            ]
+            for subdir in data_subdirs:
+                Path(f"{self.config['data_path']}/{subdir}").mkdir(parents=True, exist_ok=True)
+                
+            # Create service config directories  
+            for service in selected_services:
+                Path(f"./{service}").mkdir(parents=True, exist_ok=True)
+                
+            self.print_colored("✓ Created directories", Colors.GREEN)
+            
+        except PermissionError as e:
+            self.print_colored(f"❌ Permission denied: {e}", Colors.RED)
+            self.print_colored("", Colors.WHITE)
+            self.print_colored("To fix this, run one of the following:", Colors.YELLOW)
+            self.print_colored("", Colors.WHITE)
+            self.print_colored("Option 1 - Use setup script:", Colors.BLUE)
+            user = os.environ.get('USER', 'your_username')
+            self.print_colored(f"sudo ./setup-media-directories.sh {self.config['data_path']} {user} {user}", Colors.WHITE)
+            self.print_colored("", Colors.WHITE)
+            self.print_colored("Option 2 - Create directories manually:", Colors.BLUE)
+            self.print_colored(f"sudo mkdir -p {self.config['data_path']}", Colors.WHITE)
+            self.print_colored(f"sudo chown -R {user}:{user} {self.config['data_path']}", Colors.WHITE)
+            self.print_colored("", Colors.WHITE)
+            self.print_colored("Option 3 - Use a different data path:", Colors.BLUE)
+            self.print_colored(f"Use ~/media instead of {self.config['data_path']}", Colors.WHITE)
+            
+            raise SystemExit("Directory creation failed. Please fix permissions and try again.")
 
     def save_env_file(self):
         """Create .env file for docker-compose matching your existing format"""
