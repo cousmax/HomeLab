@@ -99,7 +99,7 @@ volumes:
       retries: 5
     restart: unless-stopped""",
 
-            "qbittorrent": """
+            "qbittorrent_vpn": """
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
@@ -127,6 +127,26 @@ volumes:
       start_period: 20s
       timeout: 10s""",
 
+            "qbittorrent_direct": """
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    environment:
+      - PUID={puid}
+      - PGID={pgid}
+      - TZ={timezone}
+      - WEBUI_PORT=8080
+    volumes:
+      - ./qbittorrent:/config
+      - {data_path}/torrents:/data/torrents
+    ports:
+      - 8080:8080 # qbittorrent web interface
+      - 6881:6881 # qbittorrent torrent port
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.12""",
+
             "deunhealth": """
   # See the 'qBittorrent Stalls with VPN Timeout' section for more information.
   deunhealth:
@@ -140,7 +160,7 @@ volumes:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock""",
 
-            "nzbget": """
+            "nzbget_vpn": """
   nzbget:
     image: lscr.io/linuxserver/nzbget:latest
     container_name: nzbget
@@ -159,7 +179,26 @@ volumes:
     restart: unless-stopped
     network_mode: service:gluetun""",
 
-            "prowlarr": """
+            "nzbget_direct": """
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:latest
+    container_name: nzbget
+    environment:
+      - PUID={puid}
+      - PGID={pgid}
+      - TZ={timezone}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./nzbget:/config
+      - {data_path}/usenet:/data/usenet
+    ports:
+      - 6789:6789
+    restart: unless-stopped
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.13""",
+
+            "prowlarr_vpn": """
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -176,6 +215,24 @@ volumes:
         condition: service_healthy
         restart: true
     network_mode: service:gluetun""",
+
+            "prowlarr_direct": """
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID={puid}
+      - PGID={pgid}
+      - TZ={timezone}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.14""",
 
             "sonarr": """
   sonarr:
@@ -334,11 +391,11 @@ volumes:
 
     def select_services(self) -> List[str]:
         services_info = {
-            "gluetun": "VPN client (required for secure downloading)",
-            "qbittorrent": "Torrent client (routes through VPN)",
+            "gluetun": "VPN client (routes download traffic through VPN)",
+            "qbittorrent": "Torrent client",
             "deunhealth": "Health monitor for qBittorrent (recommended with VPN)",
-            "nzbget": "Usenet client (routes through VPN)",
-            "prowlarr": "Indexer manager (routes through VPN)",
+            "nzbget": "Usenet client",
+            "prowlarr": "Indexer manager",
             "sonarr": "TV show management",
             "radarr": "Movie management",
             "lidarr": "Music management", 
@@ -352,11 +409,33 @@ volumes:
         selected = []
         self.print_header("Service Selection")
         
-        # Recommend VPN stack first
-        self.print_colored("🔒 VPN & Download Stack (Recommended together):", Colors.CYAN)
-        for service in ["gluetun", "qbittorrent", "deunhealth", "nzbget", "prowlarr"]:
-            if self.ask_yes_no(f"Include {service} ({services_info[service]})?", "y" if service in ["gluetun", "qbittorrent"] else "n"):
-                selected.append(service)
+        # First ask about VPN
+        self.print_colored("🔒 VPN Configuration:", Colors.CYAN)
+        use_vpn = self.ask_yes_no("Do you want to route download traffic through VPN (gluetun)?", "n")
+        
+        if use_vpn:
+            selected.append("gluetun")
+            self.print_colored("✓ VPN enabled - download clients will route through gluetun", Colors.GREEN)
+        else:
+            self.print_colored("✓ VPN disabled - download clients will use direct connection", Colors.YELLOW)
+        
+        print()
+        self.print_colored("📥 Download Clients:", Colors.CYAN)
+        
+        # qBittorrent
+        if self.ask_yes_no(f"Include qbittorrent ({services_info['qbittorrent']})?", "y"):
+            selected.append("qbittorrent")
+            
+            # Only offer deunhealth if VPN is enabled
+            if use_vpn and self.ask_yes_no(f"Include deunhealth ({services_info['deunhealth']})?", "y"):
+                selected.append("deunhealth")
+        
+        # Other download clients
+        if self.ask_yes_no(f"Include nzbget ({services_info['nzbget']})?", "n"):
+            selected.append("nzbget")
+            
+        if self.ask_yes_no(f"Include prowlarr ({services_info['prowlarr']})?", "y"):
+            selected.append("prowlarr")
         
         print()
         self.print_colored("📺 Media Management (*arr stack):", Colors.CYAN)
@@ -375,7 +454,10 @@ volumes:
         for service in ["portainer"]:
             if self.ask_yes_no(f"Include {service} ({services_info[service]})?"):
                 selected.append(service)
-                
+        
+        # Store VPN choice for use in template generation
+        self.use_vpn = use_vpn
+        
         return selected
 
     def generate_compose(self, selected_services: List[str]):
@@ -383,9 +465,21 @@ volumes:
         
         # Generate services section
         services_content = ""
+        
         for service in selected_services:
-            if service in templates:
-                service_config = templates[service].format(**self.config)
+            template_key = service
+            
+            # Use appropriate template based on VPN choice
+            if hasattr(self, 'use_vpn'):
+                if service == "qbittorrent":
+                    template_key = "qbittorrent_vpn" if self.use_vpn else "qbittorrent_direct"
+                elif service == "nzbget":
+                    template_key = "nzbget_vpn" if self.use_vpn else "nzbget_direct"
+                elif service == "prowlarr":
+                    template_key = "prowlarr_vpn" if self.use_vpn else "prowlarr_direct"
+            
+            if template_key in templates:
+                service_config = templates[template_key].format(**self.config)
                 services_content += service_config + "\n"
         
         # Generate full compose file
@@ -396,6 +490,11 @@ volumes:
             f.write(compose_content)
             
         self.print_colored("✓ Generated docker-compose.yml", Colors.GREEN)
+        
+        # Show configuration summary
+        if hasattr(self, 'use_vpn'):
+            vpn_status = "enabled" if self.use_vpn else "disabled"
+            self.print_colored(f"ℹ️ VPN routing: {vpn_status}", Colors.BLUE)
 
     def create_directories(self, selected_services: List[str]):
         """
@@ -622,11 +721,14 @@ SERVER_COUNTRIES=Netherlands
     def print_urls(self, services: List[str]):
         self.print_header("Service URLs")
         
+        # Determine if VPN is enabled
+        vpn_enabled = hasattr(self, 'use_vpn') and self.use_vpn
+        
         urls = {
             "gluetun": "VPN status (check logs with: docker-compose logs gluetun)",
-            "qbittorrent": "http://localhost:8080 (via VPN)",
-            "nzbget": "http://localhost:6789 (via VPN)", 
-            "prowlarr": "http://localhost:9696 (via VPN)",
+            "qbittorrent": "http://localhost:8080" + (" (via VPN)" if vpn_enabled else ""),
+            "nzbget": "http://localhost:6789" + (" (via VPN)" if vpn_enabled else ""), 
+            "prowlarr": "http://localhost:9696" + (" (via VPN)" if vpn_enabled else ""),
             "sonarr": "http://localhost:8989", 
             "radarr": "http://localhost:7878",
             "lidarr": "http://localhost:8686",
@@ -644,12 +746,17 @@ SERVER_COUNTRIES=Netherlands
                 else:
                     print(f"  {service}: {Colors.YELLOW}{urls[service]}{Colors.NC}")
         
-        if "gluetun" in services:
+        if vpn_enabled and "gluetun" in services:
             print()
-            self.print_colored("🔒 VPN Notes:", Colors.YELLOW)
-            print(f"  - Services using VPN will be accessible through Gluetun container")
+            self.print_colored("🔒 VPN Configuration:", Colors.YELLOW)
+            print(f"  - Download services route through VPN for privacy")
             print(f"  - Check VPN status: docker-compose exec gluetun wget -qO- ifconfig.me")
             print(f"  - Update .env file with your VPN credentials before starting")
+        elif not vpn_enabled:
+            print()
+            self.print_colored("🌐 Direct Connection:", Colors.YELLOW)
+            print(f"  - Download services use direct internet connection")
+            print(f"  - No VPN configuration needed")
         
         print()
         self.print_colored("📚 Trash Guides Setup:", Colors.CYAN)
