@@ -383,80 +383,151 @@ volumes:
     def configure(self):
         self.print_header("Configuration Setup")
         
-        self.config["timezone"] = self.get_input("Timezone", self.config["timezone"])
-        self.config["puid"] = self.get_input("PUID (User ID)", self.config["puid"])
-        self.config["pgid"] = self.get_input("PGID (Group ID)", self.config["pgid"])
-        
-        # Network share configuration
-        self.print_colored("\n🌐 Storage Configuration:", Colors.CYAN)
-        use_network_share = self.ask_yes_no("Do you want to use a network share (NFS/SMB) for media storage?", "n")
-        
-        if use_network_share:
-            self._configure_network_share()
-        else:
-            self.config["data_path"] = self.get_input("Data path", self.config["data_path"])
-            self.config["use_network_share"] = False
-        
-        self.config["config_path"] = self.get_input("Config path", self.config["config_path"])
-        self.config["firewall_vpn_input_ports"] = self.get_input("VPN forwarded port", self.config["firewall_vpn_input_ports"])
-
-    def _configure_network_share(self):
-        """Configure network share (NFS/SMB) mounting"""
-        self.print_colored("Setting up network share configuration...", Colors.BLUE)
-        
-        # Get share type
-        share_types = {
-            "1": "NFS",
-            "2": "SMB/CIFS (Windows Share)",
-            "3": "Manual (I'll configure it myself)"
-        }
-        
-        print("\nShare types:")
-        for key, value in share_types.items():
-            print(f"  {key}. {value}")
-        
-        share_choice = self.get_input("Select share type", "1")
-        share_type = share_types.get(share_choice, "NFS")
-        
-        if share_choice == "3":
-            # Manual configuration
-            self.config["data_path"] = self.get_input("Mount path (where network share will be mounted)", "/mnt/media")
-            self.config["use_network_share"] = True
-            self.config["share_type"] = "manual"
-            self.print_colored("⚠ Manual setup selected. Make sure to mount your network share before running docker-compose.", Colors.YELLOW)
-            return
-        
-        # Get connection details
-        self.config["share_host"] = self.get_input("Server IP/hostname", "192.168.1.100")
-        
-        if share_choice == "1":  # NFS
-            self.config["share_path"] = self.get_input("NFS export path", "/mnt/media")
-            self.config["mount_path"] = self.get_input("Local mount point", "/mnt/media")
-            self.config["nfs_options"] = self.get_input("NFS mount options", "vers=3,proto=tcp,rsize=8192,wsize=8192,hard,intr")
+        # Basic configuration with retry capability
+        while True:
+            self.config["timezone"] = self.get_input("Timezone", self.config["timezone"])
+            self.config["puid"] = self.get_input("PUID (User ID)", self.config["puid"])
+            self.config["pgid"] = self.get_input("PGID (Group ID)", self.config["pgid"])
             
-        elif share_choice == "2":  # SMB
-            self.config["share_name"] = self.get_input("Share name", "media")
-            self.config["share_username"] = self.get_input("Username", "mediauser")
-            self.config["mount_path"] = self.get_input("Local mount point", "/mnt/media")
-            self.config["smb_options"] = self.get_input("SMB mount options", "uid=1000,gid=1000,iocharset=utf8,file_mode=0644,dir_mode=0755")
+            # Show basic config summary
+            self.print_colored("\n📋 Basic Configuration Summary:", Colors.CYAN)
+            self.print_colored(f"  Timezone: {self.config['timezone']}", Colors.WHITE)
+            self.print_colored(f"  PUID: {self.config['puid']}", Colors.WHITE)
+            self.print_colored(f"  PGID: {self.config['pgid']}", Colors.WHITE)
             
-            # Password handling
-            use_credentials_file = self.ask_yes_no("Store credentials in a file (recommended)?", "y")
-            if use_credentials_file:
-                self.config["use_credentials_file"] = True
-                self.print_colored("💡 We'll create a credentials file at /etc/cifs-credentials", Colors.BLUE)
+            if self.ask_yes_no("Are these settings correct?", "y"):
+                break
+            self.print_colored("Let's reconfigure...\n", Colors.YELLOW)
+        
+        # Network share configuration with retry
+        while True:
+            self.print_colored("\n🌐 Storage Configuration:", Colors.CYAN)
+            use_network_share = self.ask_yes_no("Do you want to use a network share (NFS/SMB) for media storage?", "n")
+            
+            if use_network_share:
+                if self._configure_network_share_with_retry():
+                    break
             else:
-                self.config["use_credentials_file"] = False
-                self.print_colored("⚠ You'll need to provide credentials during mount", Colors.YELLOW)
+                while True:
+                    self.config["data_path"] = self.get_input("Data path", self.config["data_path"])
+                    self.config["use_network_share"] = False
+                    
+                    self.print_colored(f"\n📁 Data Path: {self.config['data_path']}", Colors.WHITE)
+                    if self.ask_yes_no("Is this data path correct?", "y"):
+                        break
+                break
         
-        self.config["data_path"] = self.config["mount_path"]
-        self.config["use_network_share"] = True
-        self.config["share_type"] = share_type.lower().replace("/", "_")
-        
-        self.print_colored(f"✓ Network share configured: {share_type}", Colors.GREEN)
+        # Config path with retry
+        while True:
+            self.config["config_path"] = self.get_input("Config path", self.config["config_path"])
+            self.config["firewall_vpn_input_ports"] = self.get_input("VPN forwarded port", self.config["firewall_vpn_input_ports"])
+            
+            self.print_colored("\n📋 Final Configuration:", Colors.CYAN)
+            self.print_colored(f"  Config path: {self.config['config_path']}", Colors.WHITE)
+            self.print_colored(f"  VPN port: {self.config['firewall_vpn_input_ports']}", Colors.WHITE)
+            
+            if self.ask_yes_no("Are these final settings correct?", "y"):
+                break
+            self.print_colored("Let's adjust these settings...\n", Colors.YELLOW)
+
+    def _configure_network_share_with_retry(self):
+        """Configure network share with retry capability"""
+        while True:
+            try:
+                self.print_colored("Setting up network share configuration...", Colors.BLUE)
+                
+                # Get share type
+                share_types = {
+                    "1": "NFS",
+                    "2": "SMB/CIFS (Windows Share)",
+                    "3": "Manual (I'll configure it myself)"
+                }
+                
+                print("\nShare types:")
+                for key, value in share_types.items():
+                    print(f"  {key}. {value}")
+                
+                share_choice = self.get_input("Select share type", "1")
+                share_type = share_types.get(share_choice, "NFS")
+                
+                if share_choice == "3":
+                    # Manual configuration
+                    self.config["data_path"] = self.get_input("Mount path (where network share will be mounted)", "/mnt/media")
+                    self.config["use_network_share"] = True
+                    self.config["share_type"] = "manual"
+                    
+                    self.print_colored(f"\n📋 Manual Network Share Configuration:", Colors.CYAN)
+                    self.print_colored(f"  Mount Path: {self.config['data_path']}", Colors.WHITE)
+                    self.print_colored("  Type: Manual setup", Colors.WHITE)
+                    
+                    if self.ask_yes_no("Is this configuration correct?", "y"):
+                        self.print_colored("⚠ Manual setup selected. Make sure to mount your network share before running docker-compose.", Colors.YELLOW)
+                        return True
+                    continue
+                
+                # Get connection details
+                self.config["share_host"] = self.get_input("Server IP/hostname", "192.168.1.100")
+                
+                if share_choice == "1":  # NFS
+                    self.config["share_path"] = self.get_input("NFS export path", "/mnt/media")
+                    self.config["mount_path"] = self.get_input("Local mount point", "/mnt/media")
+                    self.config["nfs_options"] = self.get_input("NFS mount options", "vers=3,proto=tcp,rsize=8192,wsize=8192,hard,intr")
+                    
+                    # Show NFS configuration summary
+                    self.print_colored(f"\n📋 NFS Configuration Summary:", Colors.CYAN)
+                    self.print_colored(f"  Server: {self.config['share_host']}", Colors.WHITE)
+                    self.print_colored(f"  Export Path: {self.config['share_path']}", Colors.WHITE)
+                    self.print_colored(f"  Mount Point: {self.config['mount_path']}", Colors.WHITE)
+                    self.print_colored(f"  Options: {self.config['nfs_options']}", Colors.WHITE)
+                    self.print_colored(f"  Full NFS Path: {self.config['share_host']}:{self.config['share_path']}", Colors.YELLOW)
+                    
+                elif share_choice == "2":  # SMB
+                    self.config["share_name"] = self.get_input("Share name", "media")
+                    self.config["share_username"] = self.get_input("Username", "mediauser")
+                    self.config["mount_path"] = self.get_input("Local mount point", "/mnt/media")
+                    self.config["smb_options"] = self.get_input("SMB mount options", "uid=1000,gid=1000,iocharset=utf8,file_mode=0644,dir_mode=0755")
+                    
+                    # Show SMB configuration summary
+                    self.print_colored(f"\n📋 SMB/CIFS Configuration Summary:", Colors.CYAN)
+                    self.print_colored(f"  Server: {self.config['share_host']}", Colors.WHITE)
+                    self.print_colored(f"  Share Name: {self.config['share_name']}", Colors.WHITE)
+                    self.print_colored(f"  Username: {self.config['share_username']}", Colors.WHITE)
+                    self.print_colored(f"  Mount Point: {self.config['mount_path']}", Colors.WHITE)
+                    self.print_colored(f"  Options: {self.config['smb_options']}", Colors.WHITE)
+                    self.print_colored(f"  Full SMB Path: //{self.config['share_host']}/{self.config['share_name']}", Colors.YELLOW)
+                    
+                    # Password handling
+                    use_credentials_file = self.ask_yes_no("Store credentials in a file (recommended)?", "y")
+                    if use_credentials_file:
+                        self.config["use_credentials_file"] = True
+                        self.print_colored("💡 We'll create a credentials file at /etc/cifs-credentials", Colors.BLUE)
+                    else:
+                        self.config["use_credentials_file"] = False
+                        self.print_colored("⚠ You'll need to provide credentials during mount", Colors.YELLOW)
+                
+                # Ask for confirmation
+                if self.ask_yes_no("Is this network share configuration correct?", "y"):
+                    self.config["data_path"] = self.config["mount_path"]
+                    self.config["use_network_share"] = True
+                    self.config["share_type"] = share_type.lower().replace("/", "_").replace(" ", "_")
+                    
+                    self.print_colored(f"✓ Network share configured: {share_type}", Colors.GREEN)
+                    return True
+                else:
+                    self.print_colored("Let's reconfigure the network share...\n", Colors.YELLOW)
+                    continue
+                    
+            except KeyboardInterrupt:
+                self.print_colored("\n❌ Configuration cancelled by user", Colors.RED)
+                return False
+            except Exception as e:
+                self.print_colored(f"❌ Error during configuration: {e}", Colors.RED)
+                retry = self.ask_yes_no("Would you like to retry network share configuration?", "y")
+                if not retry:
+                    return False
 
     def _setup_network_share(self) -> bool:
-        """Set up network share mounting"""
+        """Set up network share mounting with retry capability"""
         share_type = self.config.get("share_type", "")
         mount_path = self.config.get("mount_path", "/mnt/media")
         
@@ -470,25 +541,69 @@ volumes:
                 continue_anyway = self.ask_yes_no("Continue anyway (will create local directories)?", "n")
                 return continue_anyway
         
-        # Install required packages
-        if not self._install_mount_dependencies(share_type):
-            return False
+        max_retries = 3
+        retry_count = 0
         
-        # Create mount point
-        try:
-            subprocess.run(['sudo', 'mkdir', '-p', mount_path], check=True, capture_output=True)
-            self.print_colored(f"✓ Created mount point: {mount_path}", Colors.GREEN)
-        except subprocess.CalledProcessError:
-            self.print_colored(f"❌ Failed to create mount point: {mount_path}", Colors.RED)
-            return False
+        while retry_count < max_retries:
+            try:
+                self.print_colored(f"\n🔧 Setting up network share (attempt {retry_count + 1}/{max_retries})...", Colors.CYAN)
+                
+                # Install required packages
+                if not self._install_mount_dependencies(share_type):
+                    if self.ask_yes_no("Package installation failed. Retry?", "y"):
+                        retry_count += 1
+                        continue
+                    return False
+                
+                # Create mount point
+                try:
+                    subprocess.run(['sudo', 'mkdir', '-p', mount_path], check=True, capture_output=True)
+                    self.print_colored(f"✓ Created mount point: {mount_path}", Colors.GREEN)
+                except subprocess.CalledProcessError as e:
+                    self.print_colored(f"❌ Failed to create mount point: {mount_path}", Colors.RED)
+                    if self.ask_yes_no("Mount point creation failed. Retry?", "y"):
+                        retry_count += 1
+                        continue
+                    return False
+                
+                # Mount the share with retry
+                mount_success = False
+                if share_type == "nfs":
+                    mount_success = self._mount_nfs_with_retry()
+                elif share_type in ["smb", "cifs", "smb_cifs"]:
+                    mount_success = self._mount_smb_with_retry()
+                
+                if mount_success:
+                    self.print_colored("✅ Network share setup completed successfully!", Colors.GREEN)
+                    return True
+                else:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        self.print_colored(f"⚠ Mount failed. Retrying... ({retry_count}/{max_retries})", Colors.YELLOW)
+                        # Ask user if they want to reconfigure
+                        if self.ask_yes_no("Do you want to modify the configuration before retrying?", "n"):
+                            if self._configure_network_share_with_retry():
+                                share_type = self.config.get("share_type", "")
+                                mount_path = self.config.get("mount_path", "/mnt/media")
+                            else:
+                                return False
+                    
+            except KeyboardInterrupt:
+                self.print_colored("\n❌ Setup cancelled by user", Colors.RED)
+                return False
+            except Exception as e:
+                self.print_colored(f"❌ Unexpected error: {e}", Colors.RED)
+                retry_count += 1
+                
+        self.print_colored("❌ Network share setup failed after all retries", Colors.RED)
+        fallback = self.ask_yes_no("Would you like to continue with local storage instead?", "y")
         
-        # Mount the share
-        if share_type == "nfs":
-            return self._mount_nfs()
-        elif share_type in ["smb", "cifs"]:
-            return self._mount_smb()
-        
-        return False
+        if fallback:
+            self.config["use_network_share"] = False
+            self.config["data_path"] = "/mnt/media"  # Fallback path
+            self.print_colored("📁 Falling back to local storage", Colors.YELLOW)
+            
+        return fallback
 
     def _is_mounted(self, path: str) -> bool:
         """Check if a path is already mounted"""
@@ -545,12 +660,28 @@ volumes:
             self.print_colored(f"❌ Error installing dependencies: {e}", Colors.RED)
             return False
 
-    def _mount_nfs(self) -> bool:
-        """Mount NFS share"""
+    def _mount_nfs_with_retry(self) -> bool:
+        """Mount NFS share with retry and error handling"""
         host = self.config["share_host"]
         share_path = self.config["share_path"]
         mount_path = self.config["mount_path"]
         options = self.config.get("nfs_options", "vers=3,proto=tcp")
+        
+        # Test connectivity first
+        self.print_colored(f"🔍 Testing connectivity to NFS server {host}...", Colors.BLUE)
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((host, 2049))  # NFS port
+            sock.close()
+            
+            if result != 0:
+                self.print_colored(f"⚠ Cannot reach NFS server {host} on port 2049", Colors.YELLOW)
+                if not self.ask_yes_no("Continue anyway?", "n"):
+                    return False
+        except Exception:
+            self.print_colored("⚠ Could not test connectivity", Colors.YELLOW)
         
         mount_cmd = [
             'sudo', 'mount', '-t', 'nfs',
@@ -561,19 +692,30 @@ volumes:
         
         try:
             self.print_colored(f"🔗 Mounting NFS share {host}:{share_path} to {mount_path}...", Colors.BLUE)
+            self.print_colored(f"Command: {' '.join(mount_cmd[2:])}", Colors.WHITE)
+            
             result = subprocess.run(mount_cmd, capture_output=True, text=True, check=True)
             self.print_colored("✓ NFS share mounted successfully!", Colors.GREEN)
             
-            # Add to fstab for persistence
-            self._add_to_fstab("nfs")
-            return True
-            
+            # Verify the mount
+            if self._verify_mount(mount_path):
+                # Add to fstab for persistence
+                self._add_to_fstab("nfs")
+                return True
+            else:
+                return False
+                
         except subprocess.CalledProcessError as e:
-            self.print_colored(f"❌ Failed to mount NFS share: {e.stderr}", Colors.RED)
+            self.print_colored(f"❌ Failed to mount NFS share", Colors.RED)
+            if e.stderr:
+                self.print_colored(f"Error details: {e.stderr.strip()}", Colors.RED)
+            
+            # Provide troubleshooting suggestions
+            self._provide_nfs_troubleshooting()
             return False
 
-    def _mount_smb(self) -> bool:
-        """Mount SMB/CIFS share"""
+    def _mount_smb_with_retry(self) -> bool:
+        """Mount SMB/CIFS share with retry and error handling"""
         host = self.config["share_host"]
         share_name = self.config["share_name"]
         mount_path = self.config["mount_path"]
@@ -594,16 +736,71 @@ volumes:
         
         try:
             self.print_colored(f"🔗 Mounting SMB share //{host}/{share_name} to {mount_path}...", Colors.BLUE)
+            self.print_colored(f"Command: {' '.join(mount_cmd[2:])}", Colors.WHITE)
+            
             result = subprocess.run(mount_cmd, capture_output=True, text=True, check=True)
             self.print_colored("✓ SMB share mounted successfully!", Colors.GREEN)
             
-            # Add to fstab for persistence
-            self._add_to_fstab("smb")
-            return True
-            
+            # Verify the mount
+            if self._verify_mount(mount_path):
+                # Add to fstab for persistence  
+                self._add_to_fstab("smb")
+                return True
+            else:
+                return False
+                
         except subprocess.CalledProcessError as e:
-            self.print_colored(f"❌ Failed to mount SMB share: {e.stderr}", Colors.RED)
+            self.print_colored(f"❌ Failed to mount SMB share", Colors.RED)
+            if e.stderr:
+                self.print_colored(f"Error details: {e.stderr.strip()}", Colors.RED)
+                
+            # Provide troubleshooting suggestions
+            self._provide_smb_troubleshooting()
             return False
+
+    def _verify_mount(self, mount_path: str) -> bool:
+        """Verify that the mount is working correctly"""
+        try:
+            # Check if path is mounted
+            if not self._is_mounted(mount_path):
+                self.print_colored("❌ Mount point verification failed - not mounted", Colors.RED)
+                return False
+                
+            # Try to create a test file
+            import tempfile
+            import os
+            test_file = os.path.join(mount_path, ".homelab_test")
+            try:
+                with open(test_file, 'w') as f:
+                    f.write("test")
+                os.remove(test_file)
+                self.print_colored("✓ Mount verification successful - read/write working", Colors.GREEN)
+                return True
+            except Exception as e:
+                self.print_colored(f"⚠ Mount is read-only or has permission issues: {e}", Colors.YELLOW)
+                return self.ask_yes_no("Continue anyway?", "y")
+                
+        except Exception as e:
+            self.print_colored(f"❌ Mount verification failed: {e}", Colors.RED)
+            return False
+
+    def _provide_nfs_troubleshooting(self):
+        """Provide NFS troubleshooting suggestions"""
+        self.print_colored("\n🔧 NFS Troubleshooting Suggestions:", Colors.YELLOW)
+        self.print_colored("1. Verify NFS server is running and export is configured", Colors.WHITE)
+        self.print_colored("2. Check firewall rules (ports 111, 2049, 20048)", Colors.WHITE)
+        self.print_colored("3. Verify export permissions in /etc/exports", Colors.WHITE)
+        self.print_colored("4. Test with: showmount -e <server_ip>", Colors.WHITE)
+        self.print_colored("5. Try different NFS version (vers=4 or vers=3)", Colors.WHITE)
+
+    def _provide_smb_troubleshooting(self):
+        """Provide SMB troubleshooting suggestions"""
+        self.print_colored("\n🔧 SMB Troubleshooting Suggestions:", Colors.YELLOW)
+        self.print_colored("1. Verify SMB server is running and share exists", Colors.WHITE)
+        self.print_colored("2. Check username/password credentials", Colors.WHITE)
+        self.print_colored("3. Test with: smbclient -L //<server_ip>", Colors.WHITE)
+        self.print_colored("4. Verify firewall allows SMB traffic (ports 139, 445)", Colors.WHITE)
+        self.print_colored("5. Try adding 'vers=2.0' or 'vers=3.0' to mount options", Colors.WHITE)
 
     def _create_smb_credentials(self) -> bool:
         """Create SMB credentials file"""
@@ -685,59 +882,72 @@ volumes:
             "jellyfin": "Media server"
         }
         
-        selected = []
-        self.print_header("Service Selection")
-        
-        # First ask about VPN
-        self.print_colored("🔒 VPN Configuration:", Colors.CYAN)
-        use_vpn = self.ask_yes_no("Do you want to route download traffic through VPN (gluetun)?", "n")
-        
-        if use_vpn:
-            selected.append("gluetun")
-            self.print_colored("✓ VPN enabled - download clients will route through gluetun", Colors.GREEN)
-        else:
-            self.print_colored("✓ VPN disabled - download clients will use direct connection", Colors.YELLOW)
-        
-        print()
-        self.print_colored("📥 Download Clients:", Colors.CYAN)
-        
-        # qBittorrent
-        if self.ask_yes_no(f"Include qbittorrent ({services_info['qbittorrent']})?", "y"):
-            selected.append("qbittorrent")
+        while True:
+            selected = []
+            self.print_header("Service Selection")
             
-            # Only offer deunhealth if VPN is enabled
-            if use_vpn and self.ask_yes_no(f"Include deunhealth ({services_info['deunhealth']})?", "y"):
-                selected.append("deunhealth")
-        
-        # Other download clients
-        if self.ask_yes_no(f"Include nzbget ({services_info['nzbget']})?", "n"):
-            selected.append("nzbget")
+            # First ask about VPN
+            self.print_colored("🔒 VPN Configuration:", Colors.CYAN)
+            use_vpn = self.ask_yes_no("Do you want to route download traffic through VPN (gluetun)?", "n")
             
-        if self.ask_yes_no(f"Include prowlarr ({services_info['prowlarr']})?", "y"):
-            selected.append("prowlarr")
-        
-        print()
-        self.print_colored("📺 Media Management (*arr stack):", Colors.CYAN)
-        for service in ["sonarr", "radarr", "lidarr", "bazarr"]:
-            if self.ask_yes_no(f"Include {service} ({services_info[service]})?", "y" if service in ["sonarr", "radarr"] else "n"):
-                selected.append(service)
+            if use_vpn:
+                selected.append("gluetun")
+                self.print_colored("✓ VPN enabled - download clients will route through gluetun", Colors.GREEN)
+            else:
+                self.print_colored("✓ VPN disabled - download clients will use direct connection", Colors.YELLOW)
+            
+            print()
+            self.print_colored("📥 Download Clients:", Colors.CYAN)
+            
+            # qBittorrent
+            if self.ask_yes_no(f"Include qbittorrent ({services_info['qbittorrent']})?", "y"):
+                selected.append("qbittorrent")
                 
-        print()
-        self.print_colored("🎬 Media & Request Management:", Colors.CYAN)
-        for service in ["jellyseerr", "ytdl-sub", "jellyfin"]:
-            if self.ask_yes_no(f"Include {service} ({services_info[service]})?"):
-                selected.append(service)
+                # Only offer deunhealth if VPN is enabled
+                if use_vpn and self.ask_yes_no(f"Include deunhealth ({services_info['deunhealth']})?", "y"):
+                    selected.append("deunhealth")
+            
+            # Other download clients
+            if self.ask_yes_no(f"Include nzbget ({services_info['nzbget']})?", "n"):
+                selected.append("nzbget")
                 
-        print()
-        self.print_colored("🛠️ Management Tools:", Colors.CYAN)
-        for service in ["portainer"]:
-            if self.ask_yes_no(f"Include {service} ({services_info[service]})?"):
-                selected.append(service)
-        
-        # Store VPN choice for use in template generation
-        self.use_vpn = use_vpn
-        
-        return selected
+            if self.ask_yes_no(f"Include prowlarr ({services_info['prowlarr']})?", "y"):
+                selected.append("prowlarr")
+            
+            print()
+            self.print_colored("📺 Media Management (*arr stack):", Colors.CYAN)
+            for service in ["sonarr", "radarr", "lidarr", "bazarr"]:
+                if self.ask_yes_no(f"Include {service} ({services_info[service]})?", "y" if service in ["sonarr", "radarr"] else "n"):
+                    selected.append(service)
+                    
+            print()
+            self.print_colored("🎬 Media & Request Management:", Colors.CYAN)
+            for service in ["jellyseerr", "ytdl-sub", "jellyfin"]:
+                if self.ask_yes_no(f"Include {service} ({services_info[service]})?"):
+                    selected.append(service)
+                    
+            print()
+            self.print_colored("🛠️ Management Tools:", Colors.CYAN)
+            for service in ["portainer"]:
+                if self.ask_yes_no(f"Include {service} ({services_info[service]})?"):
+                    selected.append(service)
+            
+            # Show selected services summary
+            self.print_colored("\n📋 Selected Services Summary:", Colors.CYAN)
+            if not selected:
+                self.print_colored("  No services selected!", Colors.RED)
+            else:
+                for service in selected:
+                    self.print_colored(f"  ✓ {service} - {services_info.get(service, 'Service')}", Colors.GREEN)
+            
+            print()
+            if self.ask_yes_no("Are you satisfied with this service selection?", "y"):
+                # Store VPN choice for use in template generation
+                self.use_vpn = use_vpn
+                return selected
+            else:
+                self.print_colored("Let's reconfigure the services...\n", Colors.YELLOW)
+                continue
 
     def generate_compose(self, selected_services: List[str]):
         templates = self.get_service_templates()
