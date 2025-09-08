@@ -17,6 +17,9 @@ This script will:
 - ✅ Create Trash Guides directory structure  
 - ✅ Generate optimized docker-compose.yml
 - ✅ Handle permissions automatically
+- ✅ **Interactive confirmations** at each major step
+- ✅ **Retry capability** for failed configurations
+- ✅ **Network share mounting** with error recovery
 - ✅ Provide service URLs and next steps
 
 ### **Manual Setup**
@@ -128,6 +131,59 @@ When you choose network share storage, the script will:
 - **Multiple Clients:** Access from multiple Docker hosts
 - **Backup Integration:** Centralized backup strategies
 - **Scalability:** Easy storage expansion
+
+## ✨ Enhanced User Experience
+
+The script now features comprehensive confirmations and retry capabilities:
+
+### **Step-by-Step Confirmations**
+
+- **Configuration Summary** - Review all settings before proceeding
+- **Network Share Details** - Full connection details with examples
+- **Service Selection** - Confirm your chosen services before generation
+- **Mount Verification** - Test network shares before continuing
+
+### **Intelligent Retry System**
+
+- **3 Retry Attempts** - Multiple chances for network share mounting
+- **Reconfiguration Options** - Fix settings between retry attempts  
+- **Connectivity Testing** - Pre-mount validation for NFS servers
+- **Fallback Options** - Continue with local storage if needed
+
+### **Built-in Troubleshooting**
+
+**NFS Issues:**
+- Connectivity verification (port 2049)
+- Export validation suggestions
+- Alternative NFS version recommendations
+
+**SMB/CIFS Issues:**  
+- Share accessibility testing
+- Credential validation prompts
+- Protocol version adjustments
+
+**Error Recovery:**
+- Clear error messages with solutions
+- Configuration modification prompts
+- Graceful degradation to local storage
+
+### **Example Enhanced Flow**
+
+```text
+📋 NFS Configuration Summary:
+  Server: 192.168.1.100
+  Export Path: /volume1/media  
+  Mount Point: /mnt/media
+  Full NFS Path: 192.168.1.100:/volume1/media
+
+Is this network share configuration correct? [y]: n
+Let's reconfigure the network share...
+
+🔧 Setting up network share (attempt 1/3)...
+🔍 Testing connectivity to NFS server 192.168.1.100...
+✓ NFS share mounted successfully!
+✓ Mount verification successful - read/write working
+```
 
 ## 🔒 VPN Configuration (Optional)
 

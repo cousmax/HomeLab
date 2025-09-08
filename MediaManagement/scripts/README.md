@@ -24,6 +24,8 @@ This script will:
 - Detects and installs Docker/Docker Compose automatically
 - Creates Trash Guides directory structure for optimal hardlinks
 - Interactive service selection with VPN support
+- **Step-by-step confirmations** with retry capabilities
+- **Network share mounting** with error recovery
 - Handles permissions and system setup
 - No external Python packages required
 
@@ -140,6 +142,30 @@ When prompted for storage, choose network share and provide:
 - Share path/name
 - Mount options (optional)
 
+## Enhanced User Experience
+
+The script now includes comprehensive safeguards and user-friendly features:
+
+### **Configuration Confirmations**
+- **Summary displays** before each major step
+- **Full details** for network share configurations
+- **Service selection review** with descriptions
+- **Easy reconfiguration** if mistakes are spotted
+
+### **Intelligent Retry System**
+- **3 attempts** for network share mounting
+- **Error-specific troubleshooting** suggestions
+- **Connectivity testing** before mount attempts
+- **Fallback options** when things don't work
+
+### **Built-in Problem Solving**
+- **NFS troubleshooting** - Port checks, export validation
+- **SMB troubleshooting** - Credential verification, protocol suggestions
+- **Mount verification** - Read/write testing after mounting
+- **Clear error messages** with actionable solutions
+
+This makes the script forgiving of configuration mistakes and provides clear guidance when issues occur.
+
 ## Features
 
 - **Zero dependencies** - Uses only Python standard library
@@ -149,6 +175,8 @@ When prompted for storage, choose network share and provide:
 - **Trash Guides structure** - Optimized directory layout
 - **Permission handling** - Automatic PUID/PGID configuration
 - **Interactive setup** - User-friendly prompts and configuration
+- **Smart confirmations** - Review settings before proceeding
+- **Retry capabilities** - Multiple attempts with error recovery
 
 ## Tips
 
