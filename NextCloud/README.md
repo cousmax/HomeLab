@@ -4,55 +4,35 @@ Automated installation scripts for Docker and Nextcloud All-in-One (AIO) with NF
 
 ## 🚀 Quick Start
 
-### Option 1: Download and Run (Recommended - Best for Interactive Use)
+### Option 1: Download and Run (Recommended)
 ```bash
 # Download the installer
-curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/install.sh -o install.sh
 
 # Make it executable and run
 chmod +x install.sh && ./install.sh
 ```
 
-### Option 2: One-Line Download and Run
+### Option 2: One-Line Install
 ```bash
-# Download and run in one command (handles interactive prompts better)
-curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/install.sh -o install.sh && chmod +x install.sh && ./install.sh
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/install.sh | bash
 ```
 
-### Option 3: VM Deployment Script (Easiest)
+### Option 3: VM Deployment Script
 ```bash
 # Download and run the VM deployment script
-curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/deploy-vm.sh -o deploy.sh
+curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/deploy-vm.sh -o deploy.sh
 chmod +x deploy.sh && ./deploy.sh
 ```
 
-### Option 4: Clone Full Repository (Most Flexible)
+### Option 4: Clone Repository (Most Flexible)
 ```bash
 # Clone the repository
-git clone https://github.com/cousmax/nextcloud-aio-automated-installer.git
-cd nextcloud-aio-automated-installer
+git clone https://github.com/cousmax/HomeLab.git
+cd HomeLab/NextCloud
 
 # Run the complete installation
 ./scripts/install-complete-stack.sh
-```
-
-### Option 4: Direct Pipe (May Have Input Issues)
-```bash
-# Simple installer (may not handle interactive input properly)
-curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/install.sh | bash
-
-# Advanced installer
-curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/quick-install.sh | bash
-```
-
-### Option 5: Wget Alternatives
-```bash
-# Download and run with wget
-wget -qO install.sh https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/install.sh
-chmod +x install.sh && ./install.sh
-
-# Or one-line with wget
-wget -qO- https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/install.sh | bash
 ```
 
 ## �️ New VM Deployment
