@@ -114,11 +114,38 @@ The script creates a Trash Guides compliant directory structure for optimal hard
    - Radarr: http://your-server:7878
    - And more...
 
+## Network Share Support
+
+The script can automatically mount and configure network shares for media storage:
+
+### **Automatic NFS Setup**
+- Installs nfs-common packages
+- Mounts with optimized settings
+- Adds to /etc/fstab for persistence
+
+### **Automatic SMB/CIFS Setup**  
+- Installs cifs-utils packages
+- Securely stores credentials
+- Configures proper permissions
+
+### **Manual Configuration**
+- Use pre-existing mounts
+- Custom mount configurations
+- Advanced setups
+
+**Example:**
+When prompted for storage, choose network share and provide:
+- Share type (NFS/SMB)
+- Server IP/hostname
+- Share path/name
+- Mount options (optional)
+
 ## Features
 
 - **Zero dependencies** - Uses only Python standard library
 - **Docker auto-install** - Detects and installs Docker if needed
 - **VPN integration** - Optional VPN routing for download clients
+- **Network share support** - NFS and SMB/CIFS mounting
 - **Trash Guides structure** - Optimized directory layout
 - **Permission handling** - Automatic PUID/PGID configuration
 - **Interactive setup** - User-friendly prompts and configuration

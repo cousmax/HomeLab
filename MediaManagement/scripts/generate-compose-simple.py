@@ -386,9 +386,287 @@ volumes:
         self.config["timezone"] = self.get_input("Timezone", self.config["timezone"])
         self.config["puid"] = self.get_input("PUID (User ID)", self.config["puid"])
         self.config["pgid"] = self.get_input("PGID (Group ID)", self.config["pgid"])
-        self.config["data_path"] = self.get_input("Data path", self.config["data_path"])
+        
+        # Network share configuration
+        self.print_colored("\n🌐 Storage Configuration:", Colors.CYAN)
+        use_network_share = self.ask_yes_no("Do you want to use a network share (NFS/SMB) for media storage?", "n")
+        
+        if use_network_share:
+            self._configure_network_share()
+        else:
+            self.config["data_path"] = self.get_input("Data path", self.config["data_path"])
+            self.config["use_network_share"] = False
+        
         self.config["config_path"] = self.get_input("Config path", self.config["config_path"])
         self.config["firewall_vpn_input_ports"] = self.get_input("VPN forwarded port", self.config["firewall_vpn_input_ports"])
+
+    def _configure_network_share(self):
+        """Configure network share (NFS/SMB) mounting"""
+        self.print_colored("Setting up network share configuration...", Colors.BLUE)
+        
+        # Get share type
+        share_types = {
+            "1": "NFS",
+            "2": "SMB/CIFS (Windows Share)",
+            "3": "Manual (I'll configure it myself)"
+        }
+        
+        print("\nShare types:")
+        for key, value in share_types.items():
+            print(f"  {key}. {value}")
+        
+        share_choice = self.get_input("Select share type", "1")
+        share_type = share_types.get(share_choice, "NFS")
+        
+        if share_choice == "3":
+            # Manual configuration
+            self.config["data_path"] = self.get_input("Mount path (where network share will be mounted)", "/mnt/media")
+            self.config["use_network_share"] = True
+            self.config["share_type"] = "manual"
+            self.print_colored("⚠ Manual setup selected. Make sure to mount your network share before running docker-compose.", Colors.YELLOW)
+            return
+        
+        # Get connection details
+        self.config["share_host"] = self.get_input("Server IP/hostname", "192.168.1.100")
+        
+        if share_choice == "1":  # NFS
+            self.config["share_path"] = self.get_input("NFS export path", "/mnt/media")
+            self.config["mount_path"] = self.get_input("Local mount point", "/mnt/media")
+            self.config["nfs_options"] = self.get_input("NFS mount options", "vers=3,proto=tcp,rsize=8192,wsize=8192,hard,intr")
+            
+        elif share_choice == "2":  # SMB
+            self.config["share_name"] = self.get_input("Share name", "media")
+            self.config["share_username"] = self.get_input("Username", "mediauser")
+            self.config["mount_path"] = self.get_input("Local mount point", "/mnt/media")
+            self.config["smb_options"] = self.get_input("SMB mount options", "uid=1000,gid=1000,iocharset=utf8,file_mode=0644,dir_mode=0755")
+            
+            # Password handling
+            use_credentials_file = self.ask_yes_no("Store credentials in a file (recommended)?", "y")
+            if use_credentials_file:
+                self.config["use_credentials_file"] = True
+                self.print_colored("💡 We'll create a credentials file at /etc/cifs-credentials", Colors.BLUE)
+            else:
+                self.config["use_credentials_file"] = False
+                self.print_colored("⚠ You'll need to provide credentials during mount", Colors.YELLOW)
+        
+        self.config["data_path"] = self.config["mount_path"]
+        self.config["use_network_share"] = True
+        self.config["share_type"] = share_type.lower().replace("/", "_")
+        
+        self.print_colored(f"✓ Network share configured: {share_type}", Colors.GREEN)
+
+    def _setup_network_share(self) -> bool:
+        """Set up network share mounting"""
+        share_type = self.config.get("share_type", "")
+        mount_path = self.config.get("mount_path", "/mnt/media")
+        
+        if share_type == "manual":
+            # Check if already mounted
+            if self._is_mounted(mount_path):
+                self.print_colored(f"✓ Network share already mounted at {mount_path}", Colors.GREEN)
+                return True
+            else:
+                self.print_colored(f"⚠ Please mount your network share at {mount_path} before continuing", Colors.YELLOW)
+                continue_anyway = self.ask_yes_no("Continue anyway (will create local directories)?", "n")
+                return continue_anyway
+        
+        # Install required packages
+        if not self._install_mount_dependencies(share_type):
+            return False
+        
+        # Create mount point
+        try:
+            subprocess.run(['sudo', 'mkdir', '-p', mount_path], check=True, capture_output=True)
+            self.print_colored(f"✓ Created mount point: {mount_path}", Colors.GREEN)
+        except subprocess.CalledProcessError:
+            self.print_colored(f"❌ Failed to create mount point: {mount_path}", Colors.RED)
+            return False
+        
+        # Mount the share
+        if share_type == "nfs":
+            return self._mount_nfs()
+        elif share_type in ["smb", "cifs"]:
+            return self._mount_smb()
+        
+        return False
+
+    def _is_mounted(self, path: str) -> bool:
+        """Check if a path is already mounted"""
+        try:
+            result = subprocess.run(['mountpoint', '-q', path], capture_output=True)
+            return result.returncode == 0
+        except:
+            return False
+
+    def _install_mount_dependencies(self, share_type: str) -> bool:
+        """Install required packages for mounting"""
+        try:
+            if share_type == "nfs":
+                self.print_colored("📦 Installing NFS utilities...", Colors.BLUE)
+                # Try different package managers
+                for cmd in [
+                    ['sudo', 'apt-get', 'update'],
+                    ['sudo', 'apt-get', 'install', '-y', 'nfs-common']
+                ]:
+                    try:
+                        subprocess.run(cmd, check=True, capture_output=True)
+                    except subprocess.CalledProcessError:
+                        # Try yum/dnf for RHEL-based systems
+                        try:
+                            subprocess.run(['sudo', 'yum', 'install', '-y', 'nfs-utils'], check=True, capture_output=True)
+                        except subprocess.CalledProcessError:
+                            try:
+                                subprocess.run(['sudo', 'dnf', 'install', '-y', 'nfs-utils'], check=True, capture_output=True)
+                            except subprocess.CalledProcessError:
+                                self.print_colored("⚠ Could not install NFS utilities automatically", Colors.YELLOW)
+                                return True  # Continue anyway
+            
+            elif share_type in ["smb", "cifs"]:
+                self.print_colored("📦 Installing CIFS utilities...", Colors.BLUE)
+                for cmd in [
+                    ['sudo', 'apt-get', 'update'],
+                    ['sudo', 'apt-get', 'install', '-y', 'cifs-utils']
+                ]:
+                    try:
+                        subprocess.run(cmd, check=True, capture_output=True)
+                    except subprocess.CalledProcessError:
+                        # Try yum/dnf
+                        try:
+                            subprocess.run(['sudo', 'yum', 'install', '-y', 'cifs-utils'], check=True, capture_output=True)
+                        except subprocess.CalledProcessError:
+                            try:
+                                subprocess.run(['sudo', 'dnf', 'install', '-y', 'cifs-utils'], check=True, capture_output=True)
+                            except subprocess.CalledProcessError:
+                                self.print_colored("⚠ Could not install CIFS utilities automatically", Colors.YELLOW)
+                                return True  # Continue anyway
+            
+            return True
+        except Exception as e:
+            self.print_colored(f"❌ Error installing dependencies: {e}", Colors.RED)
+            return False
+
+    def _mount_nfs(self) -> bool:
+        """Mount NFS share"""
+        host = self.config["share_host"]
+        share_path = self.config["share_path"]
+        mount_path = self.config["mount_path"]
+        options = self.config.get("nfs_options", "vers=3,proto=tcp")
+        
+        mount_cmd = [
+            'sudo', 'mount', '-t', 'nfs',
+            '-o', options,
+            f'{host}:{share_path}',
+            mount_path
+        ]
+        
+        try:
+            self.print_colored(f"🔗 Mounting NFS share {host}:{share_path} to {mount_path}...", Colors.BLUE)
+            result = subprocess.run(mount_cmd, capture_output=True, text=True, check=True)
+            self.print_colored("✓ NFS share mounted successfully!", Colors.GREEN)
+            
+            # Add to fstab for persistence
+            self._add_to_fstab("nfs")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            self.print_colored(f"❌ Failed to mount NFS share: {e.stderr}", Colors.RED)
+            return False
+
+    def _mount_smb(self) -> bool:
+        """Mount SMB/CIFS share"""
+        host = self.config["share_host"]
+        share_name = self.config["share_name"]
+        mount_path = self.config["mount_path"]
+        options = self.config.get("smb_options", "uid=1000,gid=1000")
+        
+        # Handle credentials
+        if self.config.get("use_credentials_file", False):
+            if not self._create_smb_credentials():
+                return False
+            options += ",credentials=/etc/cifs-credentials"
+        
+        mount_cmd = [
+            'sudo', 'mount', '-t', 'cifs',
+            '-o', options,
+            f'//{host}/{share_name}',
+            mount_path
+        ]
+        
+        try:
+            self.print_colored(f"🔗 Mounting SMB share //{host}/{share_name} to {mount_path}...", Colors.BLUE)
+            result = subprocess.run(mount_cmd, capture_output=True, text=True, check=True)
+            self.print_colored("✓ SMB share mounted successfully!", Colors.GREEN)
+            
+            # Add to fstab for persistence
+            self._add_to_fstab("smb")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            self.print_colored(f"❌ Failed to mount SMB share: {e.stderr}", Colors.RED)
+            return False
+
+    def _create_smb_credentials(self) -> bool:
+        """Create SMB credentials file"""
+        username = self.config["share_username"]
+        password = input(f"{Colors.BLUE}Enter password for {username}: {Colors.NC}")
+        domain = self.get_input("Domain (optional)", "")
+        
+        credentials_content = f"username={username}\npassword={password}\n"
+        if domain:
+            credentials_content += f"domain={domain}\n"
+        
+        try:
+            # Write credentials file
+            subprocess.run([
+                'sudo', 'tee', '/etc/cifs-credentials'
+            ], input=credentials_content, text=True, capture_output=True, check=True)
+            
+            # Set secure permissions
+            subprocess.run(['sudo', 'chmod', '600', '/etc/cifs-credentials'], check=True)
+            subprocess.run(['sudo', 'chown', 'root:root', '/etc/cifs-credentials'], check=True)
+            
+            self.print_colored("✓ Credentials file created at /etc/cifs-credentials", Colors.GREEN)
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            self.print_colored(f"❌ Failed to create credentials file: {e}", Colors.RED)
+            return False
+
+    def _add_to_fstab(self, share_type: str):
+        """Add mount to /etc/fstab for persistence"""
+        add_to_fstab = self.ask_yes_no("Add mount to /etc/fstab for automatic mounting at boot?", "y")
+        
+        if not add_to_fstab:
+            return
+        
+        host = self.config["share_host"]
+        mount_path = self.config["mount_path"]
+        
+        if share_type == "nfs":
+            share_path = self.config["share_path"]
+            options = self.config.get("nfs_options", "vers=3,proto=tcp")
+            fstab_line = f"{host}:{share_path} {mount_path} nfs {options} 0 0"
+        else:  # SMB
+            share_name = self.config["share_name"]
+            options = self.config.get("smb_options", "uid=1000,gid=1000")
+            if self.config.get("use_credentials_file", False):
+                options += ",credentials=/etc/cifs-credentials"
+            fstab_line = f"//{host}/{share_name} {mount_path} cifs {options} 0 0"
+        
+        try:
+            # Backup current fstab
+            subprocess.run(['sudo', 'cp', '/etc/fstab', '/etc/fstab.backup'], check=True)
+            
+            # Add line to fstab
+            subprocess.run([
+                'sudo', 'sh', '-c', f'echo "{fstab_line}" >> /etc/fstab'
+            ], check=True)
+            
+            self.print_colored("✓ Added to /etc/fstab for automatic mounting", Colors.GREEN)
+            
+        except subprocess.CalledProcessError:
+            self.print_colored("⚠ Could not add to /etc/fstab automatically", Colors.YELLOW)
+            self.print_colored(f"Manual fstab entry: {fstab_line}", Colors.WHITE)
 
     def select_services(self) -> List[str]:
         services_info = {
@@ -619,6 +897,14 @@ volumes:
         import stat
         
         data_path = self.config["data_path"]
+        
+        # Handle network share mounting first
+        if self.config.get("use_network_share", False):
+            if not self._setup_network_share():
+                self.print_colored("❌ Network share setup failed. Continuing with local directories...", Colors.RED)
+                # Update data_path to a local fallback
+                self.config["data_path"] = "/tmp/media"
+                data_path = self.config["data_path"]
         
         self.print_colored("🗂️ Creating Trash Guides recommended directory structure...", Colors.CYAN)
         

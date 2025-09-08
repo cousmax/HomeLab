@@ -88,6 +88,47 @@ The generator creates an optimal directory structure for hardlinks:
 - **Performance:** Dramatically faster import times
 - **Trash Guides Compliant:** Follows community best practices
 
+## 🌐 Network Share Support
+
+The script supports mounting network shares for media storage:
+
+### **Supported Share Types**
+
+- **NFS** - Network File System (Linux/Unix)
+- **SMB/CIFS** - Windows shares (Samba)
+- **Manual** - Pre-configured custom mounts
+
+### **Automatic Setup**
+
+When you choose network share storage, the script will:
+
+- ✅ Install required packages (nfs-common or cifs-utils)
+- ✅ Create mount points with proper permissions
+- ✅ Mount the share with optimized settings
+- ✅ Add to /etc/fstab for persistence
+- ✅ Handle credentials securely (SMB only)
+
+### **Configuration Examples**
+
+**NFS:**
+- Server: `192.168.1.100`
+- Export: `/mnt/media`
+- Mount: `/mnt/media`
+- Options: `vers=3,proto=tcp,rsize=8192,wsize=8192`
+
+**SMB/CIFS:**
+- Server: `192.168.1.100`
+- Share: `media`
+- Mount: `/mnt/media`
+- Credentials: Stored securely in `/etc/cifs-credentials`
+
+### **Benefits**
+
+- **Centralized Storage:** All media on NAS/file server
+- **Multiple Clients:** Access from multiple Docker hosts
+- **Backup Integration:** Centralized backup strategies
+- **Scalability:** Easy storage expansion
+
 ## 🔒 VPN Configuration (Optional)
 
 The generator asks if you want VPN routing for download clients:
