@@ -1,154 +1,124 @@
-# CousmaxHomeLab
+# HomeLab Automation Suite
 
-A comprehensive HomeLab automation suite with media management and NextCloud deployment scripts.
+A comprehensive HomeLab automation suite featuring media management (*arr stack) and NextCloud deployment scripts, designed for easy setup on fresh VMs.
 
 ---
 
-## 🚀 Quick Installation
+## 🚀 Quick Setup
 
-### Media Management Stack
+### **For Fresh VMs (Recommended)**
 
-**Option 1: One-Line Install (Recommended)**
-
+**Linux/Ubuntu:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/setup-homelab.sh | bash
 ```
 
-**Option 2: Interactive Installer**
-
-```bash
-curl -sSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/Media%20Management/scripts/github-installer.sh | bash
+**Windows PowerShell (as Administrator):**
+```powershell
+iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/setup-homelab.ps1'))
 ```
 
-**Option 3: Manual Clone**
-
+**Manual Setup:**
 ```bash
-git clone https://github.com/cousmax/HomeLab.git
-cd "HomeLab/Media Management/scripts"
-chmod +x *.sh
-./quick-install.sh
-```
-
-### NextCloud Deployment
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/cousmax/HomeLab/Dynamic-Servarr/NextCloud/install.sh -o install.sh
-chmod +x install.sh && ./install.sh
+git clone -b Dynamic-Servarr https://github.com/cousmax/HomeLab.git
+cd HomeLab
 ```
 
 ---
 
-# Workspace Overview & Quick Start
+## 📦 Components
 
-## Media Management
+### **🎬 Media Management**
+Complete *arr stack automation with Docker Compose following Trash Guides best practices.
 
-**Purpose:**  
-Automates the setup and management of a complete media stack using Docker Compose, following TRASHguides best practices. Integrates NFS storage (e.g., from TrueNAS) and supports VPN protection for download clients.
+**Features:**
+- 🐳 **Automated Docker installation and setup**
+- 📁 **Trash Guides directory structure** for optimal hardlinks
+- 🔒 **Optional VPN routing** via Gluetun
+- ⚙️ **Smart dependency management** 
+- 🎯 **One-command deployment**
 
-**Key Features:**
-- Docker Compose stack for media automation (Sonarr, Radarr, Prowlarr, qBittorrent, NZBGet, etc.)
-- NFS storage integration for centralized media storage
-- VPN routing for secure downloads
-- Scripts for setup, management, and troubleshooting
+**Services Available:**
+- **Download Clients:** qBittorrent, NZBGet, Prowlarr
+- **Media Management:** Sonarr, Radarr, Lidarr, Bazarr
+- **Media Servers:** Jellyfin, Jellyseerr
+- **Management:** Portainer
 
-**How to Run:**
-- Initial setup (mount NFS, configure stack):
-	```bash
-	sudo ./setup.sh
-	```
-- Start all services:
-	```bash
-	./manage.sh start
-	```
-- Check status:
-	```bash
-	./manage.sh status
-	```
-- Access services via browser (default ports):
-	- Prowlarr: `http://localhost:9696`
-	- qBittorrent: `http://localhost:8080`
-	- NZBGet: `http://localhost:6789`
-	- Sonarr: `http://localhost:8989`
-	- Radarr: `http://localhost:7878`
-
----
-
-## NextCloud
-
-**Purpose:**  
-Automates the installation and deployment of Nextcloud (All-in-One) using Docker, with NFS storage integration. Includes scripts for both Docker and VM-based deployments.
-
-**Key Features:**
-- Automated installer scripts for Nextcloud AIO
-- NFS storage setup for persistent data
-- VM deployment options for more advanced setups
-- Example Docker Compose files and helper scripts
-
-**How to Run:**
-- Recommended: Download and run the installer script:
-	```bash
-	curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/install.sh -o install.sh
-	chmod +x install.sh && ./install.sh
-	```
-- VM deployment:
-	```bash
-	curl -fsSL https://raw.githubusercontent.com/cousmax/nextcloud-aio-automated-installer/main/deploy-vm.sh -o deploy.sh
-	chmod +x deploy.sh && ./deploy.sh
-	```
-- Clone full repository for advanced/manual setup:
-	```bash
-	git clone https://github.com/cousmax/nextcloud-aio-automated-installer.git
-	cd nextcloud-aio-automated-installer
-	./scripts/install-complete-stack.sh
-	```
-
----
-For more details, see the individual folder README and guides.
-
-# Workspace Overview & Quick Start
-
-## 1. Media Management
-**Purpose:** Manage media services (NZBGet, qBittorrent, etc.) with Docker and scripts.
-
-**How to Run:**
-- Navigate to the `Media Management` folder.
-- To start all services:
-
+**Quick Start:**
 ```bash
-docker-compose up -d
+cd HomeLab/MediaManagement/scripts
+python3 generate-compose-simple.py  # All-in-one setup
 ```
 
-- For scripted setup:
-	- Bash (WSL/Git Bash):
+### **☁️ NextCloud**
+Automated NextCloud AIO deployment with NFS storage integration.
 
+**Features:**
+- 🔄 **Automated installation scripts**
+- 💾 **NFS storage integration** 
+- 🖥️ **VM deployment options**
+- 📋 **Example configurations**
+
+**Quick Start:**
 ```bash
-bash ./quick-install.sh
-```
-
-## 2. NextCloud
-**Purpose:** Deploy NextCloud via VM or Docker, with supporting scripts and guides.
-
-**How to Run:**
-- For Docker deployment:
-	- Navigate to the `NextCloud` folder.
-	- Run:
-
-```bash
-bash ./scripts/install-docker-complete.sh
-```
-
-	- Or use the example compose file:
-
-```bash
-docker-compose -f ./examples/docker-compose-example.yml up -d
-```
-
-- For VM deployment:
-	- Run:
-
-```bash
-bash ./deploy-vm.sh
+cd HomeLab/NextCloud
+./install.sh
 ```
 
 ---
-For more details, see the individual folder README and guides.
+
+## 🎯 Service URLs (Default Ports)
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Prowlarr | http://localhost:9696 | Indexer Manager |
+| qBittorrent | http://localhost:8080 | Torrent Client |
+| NZBGet | http://localhost:6789 | Usenet Client |
+| Sonarr | http://localhost:8989 | TV Show Management |
+| Radarr | http://localhost:7878 | Movie Management |
+| Lidarr | http://localhost:8686 | Music Management |
+| Bazarr | http://localhost:6767 | Subtitle Management |
+| Jellyfin | http://localhost:8096 | Media Server |
+| Jellyseerr | http://localhost:5055 | Request Management |
+| Portainer | http://localhost:9000 | Docker Management |
+
+---
+
+## 📚 Documentation
+
+- **[Quick Setup Guide](QUICK-SETUP.md)** - One-liners for fresh VM setup
+- **[MediaManagement/README.md](MediaManagement/README.md)** - Detailed media stack info
+- **[NextCloud/README.md](NextCloud/README.md)** - NextCloud deployment guide
+
+---
+
+## 🔧 Requirements
+
+- **OS:** Ubuntu 20.04+, Debian 11+, or compatible Linux distribution
+- **Memory:** 4GB RAM minimum (8GB+ recommended)
+- **Storage:** 20GB+ free space
+- **Network:** Internet connection for downloads and updates
+
+---
+
+## 🤝 Support
+
+- **Issues:** Use GitHub Issues for bug reports
+- **Documentation:** Check individual component README files
+- **Trash Guides:** https://trash-guides.info/ for media stack best practices
+
+---
+
+**Repository Structure:**
+```
+HomeLab/
+├── MediaManagement/          # Media stack automation
+│   ├── scripts/             # Setup and management scripts
+│   └── docker-compose.yml   # Generated compose file
+├── NextCloud/               # NextCloud deployment
+│   ├── scripts/            # Installation scripts
+│   └── examples/           # Example configurations
+├── setup-homelab.sh        # Linux VM setup script
+├── setup-homelab.ps1       # Windows VM setup script
+└── QUICK-SETUP.md          # Quick reference guide
+```

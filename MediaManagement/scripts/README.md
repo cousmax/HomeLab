@@ -1,217 +1,133 @@
-# Dynamic Docker Compose Generators
+# MediaManagement Scripts
 
-This directory contains several tools for dynamically creating Docker Compose files for your HomeLab setup.
+This directory contains automation scripts for setting up and managing your media stack.
 
-## Available Generators
+## Quick Start
 
-### 1. Bash Script (`generate-compose.sh`)
-- **No dependencies required**
-- Interactive bash script
-- Creates docker-compose.yml with selected services
-- Supports all major HomeLab services
-
-```bash
-chmod +x generate-compose.sh
-./generate-compose.sh
-```
-
-### 2. Simple Python Script (`generate-compose-simple.py`)
-- **No external dependencies** (uses only Python stdlib)
-- Clean, simple interface
-- Template-based generation
-- Creates .env file for variables
+**Recommended approach** - Use the all-in-one Python script:
 
 ```bash
 python3 generate-compose-simple.py
 ```
 
-### 3. Advanced Python Script (`generate-compose.py`)
-- **Requires PyYAML** (`pip install -r requirements.txt`)
-- More advanced features
-- JSON configuration saving/loading
-- Better error handling
+This script will:
+- Detect and install Docker/Docker Compose if needed
+- Create optimized directory structure (Trash Guides compliant)
+- Generate docker-compose.yml with your selected services
+- Handle VPN configuration automatically
+- Set proper permissions
+
+## Available Scripts
+
+### Main Generator (`generate-compose-simple.py`)
+**Primary tool** - Complete automation with no external dependencies
+- Detects and installs Docker/Docker Compose automatically
+- Creates Trash Guides directory structure for optimal hardlinks
+- Interactive service selection with VPN support
+- Handles permissions and system setup
+- No external Python packages required
 
 ```bash
-pip install -r requirements.txt
-python3 generate-compose.py
+python3 generate-compose-simple.py
+```
+
+### System Setup (`install-docker-and-update-os.sh`)
+**Standalone installer** - Used by main script but can run independently
+- Installs Docker and Docker Compose
+- Updates system packages
+- Adds user to docker group
+- Optimizes system for containers
+
+```bash
+chmod +x install-docker-and-update-os.sh
+sudo ./install-docker-and-update-os.sh
 ```
 
 ## Supported Services
 
-All generators support these popular HomeLab services:
+The main generator supports these HomeLab services:
 
 ### Management & Monitoring
+
 - **Portainer** - Docker management UI (port 9000)
 - **Watchtower** - Automatic container updates
 
 ### Reverse Proxy
+
 - **Nginx Proxy Manager** - Easy reverse proxy with SSL (port 81)
-- **Traefik** - Modern reverse proxy (advanced version only)
 
 ### Media Management (*arr stack)
+
 - **Sonarr** - TV show management (port 8989)
 - **Radarr** - Movie management (port 7878)  
 - **Prowlarr** - Indexer manager (port 9696)
 
 ### Download Clients
+
 - **qBittorrent** - Modern torrent client (port 8080)
-- **Transmission** - Lightweight torrent client (port 9091)
 
 ### Media Servers
+
 - **Jellyfin** - Open source media server (port 8096)
+
+### VPN Support
+
+- **Gluetun** - VPN container for securing download clients
+
+## Directory Structure
+
+The script creates a Trash Guides compliant directory structure for optimal hardlinks:
+
+```text
+/mnt/media/
+├── media/
+│   ├── movies/
+│   └── tv/
+├── torrents/
+│   ├── movies/
+│   └── tv/
+└── usenet/
+    ├── movies/
+    └── tv/
+```
+
+## Quick Usage
+
+1. **Run the main script**:
+   ```bash
+   python3 generate-compose-simple.py
+   ```
+
+2. **Follow the prompts**:
+   - Choose your services
+   - Select VPN provider (optional)
+   - Configure settings
+
+3. **Start your stack**:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Access your services**:
+   - Portainer: http://your-server:9000
+   - Sonarr: http://your-server:8989
+   - Radarr: http://your-server:7878
+   - And more...
 
 ## Features
 
-### Configuration Options
-- **Timezone** - Set your local timezone
-- **PUID/PGID** - User and group IDs for file permissions
-- **Data Path** - Where to store media files
-- **Config Path** - Where to store application configs
-- **Domain** - Your domain name (for reverse proxy)
+- **Zero dependencies** - Uses only Python standard library
+- **Docker auto-install** - Detects and installs Docker if needed
+- **VPN integration** - Optional VPN routing for download clients
+- **Trash Guides structure** - Optimized directory layout
+- **Permission handling** - Automatic PUID/PGID configuration
+- **Interactive setup** - User-friendly prompts and configuration
 
-### Directory Structure Created
-```
-./data/
-├── movies/
-├── tv/
-├── downloads/
-├── music/
-└── books/
+## Tips
 
-./config/
-├── sonarr/
-├── radarr/
-├── prowlarr/
-├── qbittorrent/
-├── jellyfin/
-├── portainer/
-└── nginx-proxy-manager/
-```
+- Run as a regular user (script handles sudo when needed)
+- Make sure you have internet access for Docker installation
+- Use VPN for download clients if accessing public trackers
+- Back up your configuration directories regularly
 
-### Generated Files
-- `docker-compose.yml` - Main compose file
-- `.env` - Environment variables (Python versions)
-- `compose-config.json` - Saved configuration (advanced version)
-
-## Usage Examples
-
-### Quick Start (Bash)
-```bash
-# Make executable and run
-chmod +x generate-compose.sh
-./generate-compose.sh
-
-# Follow prompts to select services
-# Generated compose file will be ready to use
-docker-compose up -d
-```
-
-### Quick Start (Python Simple)
-```bash
-# Run the simple Python generator
-python3 generate-compose-simple.py
-
-# Select your services interactively
-# Start your stack
-docker-compose up -d
-```
-
-### Advanced Usage (Python Advanced)
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run advanced generator
-python3 generate-compose.py
-
-# Configuration is saved for reuse
-# Modify compose-config.json for automation
-```
-
-## Automation Examples
-
-### Headless Generation (Bash)
-You can automate the bash script by pre-setting environment variables:
-
-```bash
-export TIMEZONE="America/New_York"
-export PUID="1000"
-export PGID="1000"
-export DATA_PATH="./data"
-export CONFIG_PATH="./config"
-
-# Then modify the script to read these variables
-```
-
-### Configuration File (Advanced Python)
-Create `compose-config.json` for automated runs:
-
-```json
-{
-  "timezone": "America/New_York",
-  "puid": "1000",
-  "pgid": "1000", 
-  "data_path": "./data",
-  "config_path": "./config",
-  "domain": "homelab.local",
-  "email": "admin@homelab.local"
-}
-```
-
-### Programmatic Service Selection
-Modify the Python scripts to accept command-line arguments:
-
-```bash
-python3 generate-compose-simple.py --services portainer,sonarr,radarr,jellyfin
-```
-
-## Tips & Best Practices
-
-### File Permissions
-Make sure your PUID/PGID match your user:
-```bash
-id $USER  # Shows your UID/GID
-```
-
-### Directory Paths
-- Use absolute paths in production
-- Ensure directories exist and have proper permissions
-- Consider using Docker volumes for important data
-
-### Service Dependencies
-Some services work better together:
-- Sonarr + Radarr + Prowlarr + qBittorrent (full *arr stack)
-- Nginx Proxy Manager + any web services (for SSL/domains)
-- Watchtower + any services (for auto-updates)
-
-### Network Configuration
-All services use the `homelab` Docker network for easy communication between containers.
-
-### Security Considerations
-- Change default passwords immediately
-- Use strong passwords
-- Consider VPN access for external exposure
-- Regular backups of config directories
-
-## Troubleshooting
-
-### Common Issues
-1. **Permission denied**: Check PUID/PGID settings
-2. **Port conflicts**: Ensure no other services use the same ports
-3. **Directory not found**: Verify paths exist and are accessible
-4. **Container won't start**: Check Docker logs: `docker-compose logs [service]`
-
-### Getting Help
-- Check service logs: `docker-compose logs -f [service_name]`
-- Verify network: `docker network ls`
-- Check running containers: `docker-compose ps`
-
-## Customization
-
-Feel free to modify these scripts for your specific needs:
-- Add new services by creating templates
-- Modify port mappings
-- Add custom environment variables
-- Integrate with your existing infrastructure
-
-The scripts are designed to be educational and easily extensible!
+For troubleshooting and advanced configuration, see the main [MediaManagement README](../README.md).
