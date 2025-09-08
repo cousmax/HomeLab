@@ -7,6 +7,7 @@ Uses Jinja2-style templating with basic string replacement
 import os
 import sys
 import json
+import subprocess
 from pathlib import Path
 from typing import Dict, List
 
@@ -113,7 +114,7 @@ volumes:
       - TORRENTING_PORT={firewall_vpn_input_ports} # airvpn forwarded port, pulled from .env
     volumes:
       - ./qbittorrent:/config
-      - {data_path}/torrents:/data
+      - {data_path}/torrents:/data/torrents
     depends_on:
       gluetun:
         condition: service_healthy
@@ -150,7 +151,7 @@ volumes:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ./nzbget:/config
-      - {data_path}/usenet:/data
+      - {data_path}/usenet:/data/usenet
     depends_on:
       gluetun:
         condition: service_healthy
@@ -188,7 +189,7 @@ volumes:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ./sonarr:/config
-      - {data_path}/media:/data
+      - {data_path}:/data
     ports:
       - 8989:8989
     networks:
@@ -207,7 +208,7 @@ volumes:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ./radarr:/config
-      - {data_path}/media:/data
+      - {data_path}:/data
     ports:
       - 7878:7878
     networks:
@@ -222,7 +223,7 @@ volumes:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ./lidarr:/config
-      - {data_path}/media:/data
+      - {data_path}:/data
     environment:
       - PUID={puid}
       - PGID={pgid}
@@ -245,7 +246,7 @@ volumes:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ./bazarr:/config
-      - {data_path}/media:/data
+      - {data_path}:/data
     ports:
       - 6767:6767
     networks:
@@ -311,8 +312,7 @@ volumes:
       - "8096:8096"
     volumes:
       - ./jellyfin:/config
-      - {data_path}/media/movies:/data/movies
-      - {data_path}/media/tv:/data/tv
+      - {data_path}/media:/data/media
     environment:
       - PUID={puid}
       - PGID={pgid}
@@ -398,99 +398,191 @@ volumes:
         self.print_colored("✓ Generated docker-compose.yml", Colors.GREEN)
 
     def create_directories(self, selected_services: List[str]):
+        """
+        Create directories using Trash Guides recommended structure for optimal hardlinks
+        https://trash-guides.info/Hardlinks/How-to-setup-for/Docker/
+        """
         import subprocess
-        import os
+        import stat
         
-        # Check if we need to use the setup script for system directories
         data_path = self.config["data_path"]
         
-        if data_path.startswith("/mnt") or data_path.startswith("/media"):
-            self.print_colored("🔧 System directory detected, using setup script...", Colors.YELLOW)
+        self.print_colored("🗂️ Creating Trash Guides recommended directory structure...", Colors.CYAN)
+        
+        # Trash Guides recommended structure for hardlinks
+        directories = [
+            # Root data directory
+            data_path,
             
-            # Find the setup script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            setup_script = os.path.join(script_dir, "setup-media-directories.sh")
+            # Media directories (for Plex/Jellyfin/Emby)
+            f"{data_path}/media",
+            f"{data_path}/media/movies",
+            f"{data_path}/media/tv",
+            f"{data_path}/media/music",
+            f"{data_path}/media/books",
+            f"{data_path}/media/audiobooks",
             
-            if os.path.exists(setup_script):
-                try:
-                    # Make the script executable
-                    os.chmod(setup_script, 0o755)
-                    
-                    # Run the setup script with sudo if needed
-                    user = os.environ.get('USER', 'root')
-                    group = os.environ.get('USER', 'root')
-                    
-                    self.print_colored(f"Running: sudo {setup_script} {data_path} {user} {group}", Colors.BLUE)
-                    result = subprocess.run([
-                        'sudo', setup_script, data_path, user, group
-                    ], capture_output=True, text=True)
-                    
-                    if result.returncode == 0:
-                        self.print_colored("✓ System directories created successfully", Colors.GREEN)
-                    else:
-                        self.print_colored(f"⚠ Setup script returned code {result.returncode}", Colors.YELLOW)
-                        self.print_colored(f"Output: {result.stdout}", Colors.WHITE)
-                        if result.stderr:
-                            self.print_colored(f"Error: {result.stderr}", Colors.RED)
-                        
-                        # Fall back to manual creation
-                        self.print_colored("Attempting manual directory creation...", Colors.YELLOW)
-                        self._create_directories_manual(selected_services)
-                        
-                except Exception as e:
-                    self.print_colored(f"⚠ Could not run setup script: {e}", Colors.YELLOW)
-                    self.print_colored("Please run the following manually:", Colors.BLUE)
-                    self.print_colored(f"sudo {setup_script} {data_path} {user} {group}", Colors.WHITE)
-                    
-                    # Fall back to manual creation in current directory
-                    self.print_colored("Creating directories in current directory as fallback...", Colors.YELLOW)
-                    self.config["data_path"] = "./data"
-                    self._create_directories_manual(selected_services)
-            else:
-                self.print_colored("⚠ Setup script not found, using manual creation", Colors.YELLOW)
-                self._create_directories_manual(selected_services)
+            # Download client directories (qBittorrent/Transmission/SABnzbd/NZBGet)
+            f"{data_path}/torrents",
+            f"{data_path}/torrents/movies",
+            f"{data_path}/torrents/tv", 
+            f"{data_path}/torrents/music",
+            f"{data_path}/torrents/books",
+            f"{data_path}/torrents/audiobooks",
+            
+            f"{data_path}/usenet",
+            f"{data_path}/usenet/movies",
+            f"{data_path}/usenet/tv",
+            f"{data_path}/usenet/music", 
+            f"{data_path}/usenet/books",
+            f"{data_path}/usenet/audiobooks",
+            
+            # Additional directories
+            f"{data_path}/watch",  # For watch folders
+            f"{data_path}/youtube",  # For ytdl-sub
+        ]
+        
+        # Service config directories (local)
+        config_dirs = [service for service in selected_services]
+        
+        # Check if we need elevated permissions for system directories
+        needs_sudo = data_path.startswith(("/mnt", "/media", "/opt")) and os.geteuid() != 0
+        
+        if needs_sudo:
+            self.print_colored("🔐 System directory detected, requesting sudo privileges...", Colors.YELLOW)
+            self._create_directories_with_sudo(directories, config_dirs)
         else:
-            # Regular directory creation for non-system paths
-            self._create_directories_manual(selected_services)
+            self._create_directories_direct(directories, config_dirs)
     
-    def _create_directories_manual(self, selected_services: List[str]):
-        """Manual directory creation with error handling"""
+    def _create_directories_with_sudo(self, directories: List[str], config_dirs: List[str]):
+        """Create directories with sudo for system paths"""
         try:
-            # Create base directories
-            Path(self.config["data_path"]).mkdir(parents=True, exist_ok=True)
-            Path(self.config["config_path"]).mkdir(parents=True, exist_ok=True)
+            # Get current user info
+            import pwd
+            current_user = pwd.getpwuid(os.getuid())
+            username = current_user.pw_name
+            groupname = current_user.pw_name  # Usually same as username
             
-            # Create data subdirectories based on your existing structure
-            data_subdirs = [
-                "media/movies", "media/tv", "media/music", 
-                "torrents", "usenet", "youtube", "downloads"
-            ]
-            for subdir in data_subdirs:
-                Path(f"{self.config['data_path']}/{subdir}").mkdir(parents=True, exist_ok=True)
-                
-            # Create service config directories  
-            for service in selected_services:
-                Path(f"./{service}").mkdir(parents=True, exist_ok=True)
-                
-            self.print_colored("✓ Created directories", Colors.GREEN)
+            self.print_colored(f"Creating directories for user: {username}:{groupname}", Colors.BLUE)
+            
+            # Create directories with sudo
+            for directory in directories:
+                try:
+                    # Create directory
+                    result = subprocess.run([
+                        'sudo', 'mkdir', '-p', directory
+                    ], capture_output=True, text=True, check=True)
+                    
+                    # Set ownership
+                    subprocess.run([
+                        'sudo', 'chown', f'{username}:{groupname}', directory
+                    ], capture_output=True, text=True, check=True)
+                    
+                    # Set permissions (755 for directories)
+                    subprocess.run([
+                        'sudo', 'chmod', '755', directory
+                    ], capture_output=True, text=True, check=True)
+                    
+                    self.print_colored(f"✓ Created: {directory}", Colors.GREEN)
+                    
+                except subprocess.CalledProcessError as e:
+                    self.print_colored(f"⚠ Failed to create {directory}: {e}", Colors.YELLOW)
+                    continue
+            
+            # Create local config directories (no sudo needed)
+            self._create_config_directories(config_dirs)
+            
+            self.print_colored("✓ Trash Guides directory structure created successfully!", Colors.GREEN)
+            self._print_directory_structure()
+            
+        except Exception as e:
+            self.print_colored(f"❌ Error creating directories with sudo: {e}", Colors.RED)
+            self._provide_manual_instructions(directories, config_dirs)
+    
+    def _create_directories_direct(self, directories: List[str], config_dirs: List[str]):
+        """Create directories directly (no sudo needed)"""
+        try:
+            # Create data directories
+            for directory in directories:
+                Path(directory).mkdir(parents=True, exist_ok=True)
+                self.print_colored(f"✓ Created: {directory}", Colors.GREEN)
+            
+            # Create local config directories
+            self._create_config_directories(config_dirs)
+            
+            self.print_colored("✓ Trash Guides directory structure created successfully!", Colors.GREEN)
+            self._print_directory_structure()
             
         except PermissionError as e:
             self.print_colored(f"❌ Permission denied: {e}", Colors.RED)
-            self.print_colored("", Colors.WHITE)
-            self.print_colored("To fix this, run one of the following:", Colors.YELLOW)
-            self.print_colored("", Colors.WHITE)
-            self.print_colored("Option 1 - Use setup script:", Colors.BLUE)
-            user = os.environ.get('USER', 'your_username')
-            self.print_colored(f"sudo ./setup-media-directories.sh {self.config['data_path']} {user} {user}", Colors.WHITE)
-            self.print_colored("", Colors.WHITE)
-            self.print_colored("Option 2 - Create directories manually:", Colors.BLUE)
-            self.print_colored(f"sudo mkdir -p {self.config['data_path']}", Colors.WHITE)
-            self.print_colored(f"sudo chown -R {user}:{user} {self.config['data_path']}", Colors.WHITE)
-            self.print_colored("", Colors.WHITE)
-            self.print_colored("Option 3 - Use a different data path:", Colors.BLUE)
-            self.print_colored(f"Use ~/media instead of {self.config['data_path']}", Colors.WHITE)
-            
-            raise SystemExit("Directory creation failed. Please fix permissions and try again.")
+            self._provide_manual_instructions(directories, config_dirs)
+    
+    def _create_config_directories(self, config_dirs: List[str]):
+        """Create local config directories for Docker services"""
+        for service in config_dirs:
+            config_path = f"./{service}"
+            Path(config_path).mkdir(parents=True, exist_ok=True)
+            self.print_colored(f"✓ Created config: {config_path}", Colors.GREEN)
+    
+    def _print_directory_structure(self):
+        """Print the created directory structure"""
+        self.print_colored("\n📁 Created Trash Guides directory structure:", Colors.CYAN)
+        data_path = self.config["data_path"]
+        
+        structure = f"""
+{data_path}/
+├── media/                 # Media for Plex/Jellyfin/Emby
+│   ├── movies/           # Movies
+│   ├── tv/               # TV Shows  
+│   ├── music/            # Music
+│   ├── books/            # Books
+│   └── audiobooks/       # Audiobooks
+├── torrents/             # qBittorrent/Transmission downloads
+│   ├── movies/           # Movie torrents
+│   ├── tv/               # TV torrents
+│   ├── music/            # Music torrents
+│   ├── books/            # Book torrents
+│   └── audiobooks/       # Audiobook torrents
+├── usenet/               # SABnzbd/NZBGet downloads
+│   ├── movies/           # Movie usenet
+│   ├── tv/               # TV usenet
+│   ├── music/            # Music usenet
+│   ├── books/            # Book usenet
+│   └── audiobooks/       # Audiobook usenet
+├── watch/                # Watch folders
+└── youtube/              # YouTube downloads (ytdl-sub)
+        """
+        
+        print(structure)
+        
+        self.print_colored("💡 This structure enables hardlinks between downloads and media!", Colors.YELLOW)
+        self.print_colored("📚 Learn more: https://trash-guides.info/Hardlinks/How-to-setup-for/Docker/", Colors.BLUE)
+    
+    def _provide_manual_instructions(self, directories: List[str], config_dirs: List[str]):
+        """Provide manual instructions when automatic creation fails"""
+        self.print_colored("\n🛠️ Manual Setup Required", Colors.YELLOW)
+        self.print_colored("Run the following commands to create the directory structure:", Colors.WHITE)
+        
+        data_path = self.config["data_path"]
+        user = os.environ.get('USER', 'your_username')
+        
+        print(f"\n# Create main directory structure:")
+        print(f"sudo mkdir -p {data_path}")
+        
+        for directory in directories:
+            print(f"sudo mkdir -p {directory}")
+        
+        print(f"\n# Set ownership:")
+        print(f"sudo chown -R {user}:{user} {data_path}")
+        
+        print(f"\n# Set permissions:")
+        print(f"sudo chmod -R 755 {data_path}")
+        
+        print(f"\n# Create local config directories:")
+        for service in config_dirs:
+            print(f"mkdir -p ./{service}")
+        
+        self.print_colored(f"\nAfter running these commands, re-run the script.", Colors.BLUE)
 
     def save_env_file(self):
         """Create .env file for docker-compose matching your existing format"""
@@ -558,6 +650,21 @@ SERVER_COUNTRIES=Netherlands
             print(f"  - Services using VPN will be accessible through Gluetun container")
             print(f"  - Check VPN status: docker-compose exec gluetun wget -qO- ifconfig.me")
             print(f"  - Update .env file with your VPN credentials before starting")
+        
+        print()
+        self.print_colored("📚 Trash Guides Setup:", Colors.CYAN)
+        self.print_colored("Your directory structure follows Trash Guides recommendations for optimal hardlinks:", Colors.WHITE)
+        print(f"  • Downloads: {self.config['data_path']}/torrents/ and {self.config['data_path']}/usenet/")
+        print(f"  • Media: {self.config['data_path']}/media/")
+        print(f"  • This enables instant moves (hardlinks) instead of slow copies!")
+        print()
+        self.print_colored("🔗 Learn more about hardlinks:", Colors.BLUE)
+        print(f"  https://trash-guides.info/Hardlinks/How-to-setup-for/Docker/")
+        print()
+        self.print_colored("⚙️ Next Steps:", Colors.CYAN)
+        print(f"  1. Configure your download clients to use the correct category folders")
+        print(f"  2. Set up your *arr apps to monitor the correct media folders")
+        print(f"  3. Configure hardlink-friendly settings in your applications")
 
     def run(self):
         self.print_header("Simple Docker Compose Generator")
