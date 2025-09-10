@@ -377,7 +377,119 @@ volumes:
       - TZ={timezone}
     networks:
       servarrnetwork:
-        ipv4_address: 172.39.0.11"""
+        ipv4_address: 172.39.0.11""",
+
+            # Monitoring Services
+            "grafana": """
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - TZ={timezone}
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.12""",
+
+            "prometheus": """
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.13""",
+
+            "node-exporter": """
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.14""",
+
+            "cadvisor": """
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.15""",
+
+            "uptime-kuma": """
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./uptime-kuma:/app/data
+    environment:
+      - TZ={timezone}
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.16""",
+
+            "homepage": """
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - PUID={puid}
+      - PGID={pgid}
+      - TZ={timezone}
+    networks:
+      servarrnetwork:
+        ipv4_address: 172.39.0.17"""
         }
 
     def configure(self):
@@ -879,7 +991,13 @@ volumes:
             "ytdl-sub": "YouTube downloader with subscriptions",
             "jellyseerr": "Request management for Jellyfin/Plex",
             "portainer": "Docker management UI",
-            "jellyfin": "Media server"
+            "jellyfin": "Media server",
+            "grafana": "Dashboards and visualization platform",
+            "prometheus": "Metrics collection and storage",
+            "node-exporter": "System metrics collector (CPU, RAM, disk)",
+            "cadvisor": "Container metrics collector",
+            "uptime-kuma": "Modern uptime monitoring with notifications",
+            "homepage": "Beautiful dashboard homepage for all services"
         }
         
         while True:
@@ -931,6 +1049,35 @@ volumes:
             for service in ["portainer"]:
                 if self.ask_yes_no(f"Include {service} ({services_info[service]})?"):
                     selected.append(service)
+            
+            print()
+            self.print_colored("📊 Monitoring & Dashboards:", Colors.CYAN)
+            
+            # Ask about monitoring preference
+            monitoring_choice = None
+            if self.ask_yes_no("Do you want to include monitoring and dashboards?", "n"):
+                self.print_colored("\nChoose monitoring solution:", Colors.YELLOW)
+                self.print_colored("1. Full Grafana Stack (Grafana + Prometheus + Node Exporter + cAdvisor)", Colors.WHITE)
+                self.print_colored("2. Simple Uptime Monitoring (Uptime Kuma)", Colors.WHITE)
+                self.print_colored("3. Homepage Dashboard (Beautiful service overview)", Colors.WHITE)
+                self.print_colored("4. All Monitoring Services", Colors.WHITE)
+                
+                while True:
+                    choice = input(f"{Colors.BLUE}Select option (1-4):{Colors.NC} ").strip()
+                    if choice == "1":
+                        selected.extend(["grafana", "prometheus", "node-exporter", "cadvisor"])
+                        break
+                    elif choice == "2":
+                        selected.append("uptime-kuma")
+                        break
+                    elif choice == "3":
+                        selected.append("homepage")
+                        break
+                    elif choice == "4":
+                        selected.extend(["grafana", "prometheus", "node-exporter", "cadvisor", "uptime-kuma", "homepage"])
+                        break
+                    else:
+                        self.print_colored("Invalid choice. Please select 1-4.", Colors.RED)
             
             # Show selected services summary
             self.print_colored("\n📋 Selected Services Summary:", Colors.CYAN)
@@ -1328,6 +1475,158 @@ SERVER_COUNTRIES=Netherlands
         self.print_colored("✓ Generated .env file", Colors.GREEN)
         self.print_colored("⚠ Remember to update VPN settings in .env file!", Colors.YELLOW)
 
+    def setup_monitoring_configs(self, services: List[str]):
+        """Create configuration files for monitoring services"""
+        if "prometheus" in services:
+            self._create_prometheus_config(services)
+        
+        if "homepage" in services:
+            self._create_homepage_config(services)
+            
+    def _create_prometheus_config(self, services: List[str]):
+        """Create Prometheus configuration file"""
+        os.makedirs("prometheus", exist_ok=True)
+        
+        prometheus_config = """global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+"""
+        
+        if "cadvisor" in services:
+            prometheus_config += """  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+"""
+        
+        # Add service-specific monitoring if available
+        service_targets = []
+        if "qbittorrent" in services:
+            service_targets.append("      - targets: ['gluetun:8080']  # qBittorrent via VPN")
+        
+        if service_targets:
+            prometheus_config += """  - job_name: 'services'
+    static_configs:
+""" + "\n".join(service_targets) + "\n"
+
+        with open("prometheus/prometheus.yml", "w") as f:
+            f.write(prometheus_config)
+            
+        self.print_colored("✓ Created Prometheus configuration", Colors.GREEN)
+        
+    def _create_homepage_config(self, services: List[str]):
+        """Create Homepage dashboard configuration"""
+        os.makedirs("homepage", exist_ok=True)
+        
+        # Create basic homepage config
+        homepage_config = {
+            "title": "HomeLab Dashboard",
+            "subtitle": "Media Management Stack",
+            "logo": "https://cdn.jsdelivr.net/gh/walkxhub/dashboard-icons/png/homepage.png",
+            "background": "https://images.unsplash.com/photo-1502134249126-9f3755a50d78?auto=format&fit=crop&w=2850&q=80"
+        }
+        
+        # Create services configuration based on selected services
+        services_config = []
+        
+        if any(s in services for s in ["sonarr", "radarr", "lidarr", "bazarr"]):
+            arr_services = []
+            for service in ["sonarr", "radarr", "lidarr", "bazarr"]:
+                if service in services:
+                    ports = {"sonarr": 8989, "radarr": 7878, "lidarr": 8686, "bazarr": 6767}
+                    arr_services.append({
+                        "name": service.title(),
+                        "icon": f"{service}.png",
+                        "href": f"http://localhost:{ports[service]}",
+                        "description": f"{service.title()} management"
+                    })
+            
+            services_config.append({
+                "name": "Media Management",
+                "icon": "mdi-filmstrip",
+                "services": arr_services
+            })
+        
+        if any(s in services for s in ["qbittorrent", "nzbget", "prowlarr"]):
+            download_services = []
+            if "qbittorrent" in services:
+                download_services.append({
+                    "name": "qBittorrent",
+                    "icon": "qbittorrent.png", 
+                    "href": "http://localhost:8080",
+                    "description": "Torrent client"
+                })
+            if "nzbget" in services:
+                download_services.append({
+                    "name": "NZBGet",
+                    "icon": "nzbget.png",
+                    "href": "http://localhost:6789", 
+                    "description": "Usenet client"
+                })
+            if "prowlarr" in services:
+                download_services.append({
+                    "name": "Prowlarr",
+                    "icon": "prowlarr.png",
+                    "href": "http://localhost:9696",
+                    "description": "Indexer manager"
+                })
+                
+            services_config.append({
+                "name": "Downloads",
+                "icon": "mdi-download",
+                "services": download_services
+            })
+        
+        if any(s in services for s in ["grafana", "prometheus", "uptime-kuma"]):
+            monitoring_services = []
+            if "grafana" in services:
+                monitoring_services.append({
+                    "name": "Grafana",
+                    "icon": "grafana.png",
+                    "href": "http://localhost:3000",
+                    "description": "Metrics dashboard"
+                })
+            if "prometheus" in services:
+                monitoring_services.append({
+                    "name": "Prometheus", 
+                    "icon": "prometheus.png",
+                    "href": "http://localhost:9090",
+                    "description": "Metrics collection"
+                })
+            if "uptime-kuma" in services:
+                monitoring_services.append({
+                    "name": "Uptime Kuma",
+                    "icon": "uptime-kuma.png", 
+                    "href": "http://localhost:3001",
+                    "description": "Uptime monitoring"
+                })
+                
+            services_config.append({
+                "name": "Monitoring", 
+                "icon": "mdi-monitor-dashboard",
+                "services": monitoring_services
+            })
+        
+        import json
+        
+        with open("homepage/config.json", "w") as f:
+            json.dump(homepage_config, f, indent=2)
+            
+        with open("homepage/services.json", "w") as f:
+            json.dump(services_config, f, indent=2)
+            
+        self.print_colored("✓ Created Homepage dashboard configuration", Colors.GREEN)
+
     def print_urls(self, services: List[str]):
         self.print_header("Service URLs")
         
@@ -1346,7 +1645,13 @@ SERVER_COUNTRIES=Netherlands
             "jellyseerr": "http://localhost:5055",
             "portainer": "http://localhost:9000",
             "jellyfin": "http://localhost:8096",
-            "ytdl-sub": "Check logs: docker-compose logs ytdl-sub"
+            "ytdl-sub": "Check logs: docker-compose logs ytdl-sub",
+            "grafana": "http://localhost:3000 (admin/admin)",
+            "prometheus": "http://localhost:9090",
+            "node-exporter": "http://localhost:9100/metrics",
+            "cadvisor": "http://localhost:8081",
+            "uptime-kuma": "http://localhost:3001",
+            "homepage": "http://localhost:3002"
         }
         
         for service in services:
@@ -1591,6 +1896,7 @@ SERVER_COUNTRIES=Netherlands
         self.generate_compose(services)
         self.create_directories(services)
         self.save_env_file()
+        self.setup_monitoring_configs(services)
         
         self.print_colored("\n✅ Setup complete!", Colors.GREEN)
         

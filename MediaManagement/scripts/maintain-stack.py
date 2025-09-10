@@ -451,6 +451,166 @@ class MediaStackMaintenance:
             self.print_colored(f"❌ Backup failed: {e}", Colors.RED)
             self.log_action("Configuration Backup", "FAILED", str(e))
 
+    def restore_backup(self):
+        """Restore configuration files from backup"""
+        self.print_colored("📥 Restoring from backup...", Colors.CYAN)
+        
+        # Find available backups
+        try:
+            backups = sorted([f for f in os.listdir('.') if f.startswith('backup_') and f.endswith('.tar.gz')], reverse=True)
+            
+            if not backups:
+                self.print_colored("❌ No backup files found", Colors.RED)
+                self.print_colored("Backups should be named like: backup_YYYYMMDD_HHMMSS.tar.gz", Colors.YELLOW)
+                return
+            
+            self.print_colored(f"Found {len(backups)} backup(s):", Colors.GREEN)
+            for i, backup in enumerate(backups[:10], 1):  # Show latest 10
+                # Extract timestamp from filename
+                timestamp_str = backup.replace('backup_', '').replace('.tar.gz', '')
+                try:
+                    timestamp = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                    formatted_date = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                    self.print_colored(f"  {i}. {backup} ({formatted_date})", Colors.WHITE)
+                except:
+                    self.print_colored(f"  {i}. {backup}", Colors.WHITE)
+            
+            # Get user selection
+            while True:
+                try:
+                    choice = input(f"\n{Colors.BLUE}Select backup to restore (1-{min(len(backups), 10)}) or 'q' to quit:{Colors.NC} ").strip()
+                    if choice.lower() == 'q':
+                        return
+                    
+                    backup_idx = int(choice) - 1
+                    if 0 <= backup_idx < min(len(backups), 10):
+                        selected_backup = backups[backup_idx]
+                        break
+                    else:
+                        self.print_colored("Invalid selection", Colors.RED)
+                except ValueError:
+                    self.print_colored("Please enter a number or 'q'", Colors.RED)
+            
+            # Show what will be restored
+            self.print_colored(f"\n📋 Will restore from: {selected_backup}", Colors.CYAN)
+            
+            # Check current files that will be overwritten
+            current_files = []
+            check_items = ["docker-compose.yml", ".env", "config/", self.maintenance_log]
+            for item in check_items:
+                if os.path.exists(item):
+                    current_files.append(item)
+            
+            if current_files:
+                self.print_colored("⚠ Current files will be overwritten:", Colors.YELLOW)
+                for file in current_files:
+                    self.print_colored(f"  - {file}", Colors.WHITE)
+                    
+                if not self.ask_yes_no("Continue with restore?", "n"):
+                    self.print_colored("Restore cancelled", Colors.YELLOW)
+                    return
+            
+            # Perform restore
+            self._perform_restore(selected_backup)
+            
+        except Exception as e:
+            self.print_colored(f"❌ Restore failed: {e}", Colors.RED)
+            self.log_action("Configuration Restore", "FAILED", str(e))
+    
+    def _perform_restore(self, backup_file: str):
+        """Perform the actual restore operation"""
+        temp_dir = f"restore_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        try:
+            # Extract backup
+            self.print_colored("Extracting backup...", Colors.BLUE)
+            subprocess.run(['tar', '-xzf', backup_file], check=True)
+            
+            # Find the extracted directory
+            backup_name = backup_file.replace('.tar.gz', '')
+            if not os.path.exists(backup_name):
+                raise Exception(f"Extracted directory {backup_name} not found")
+            
+            # Stop services before restore
+            if self.ask_yes_no("Stop Docker services before restore?", "y"):
+                self.print_colored("Stopping services...", Colors.BLUE)
+                try:
+                    self._run_compose_command(['down'])
+                    self.print_colored("✅ Services stopped", Colors.GREEN)
+                except:
+                    self.print_colored("⚠ Could not stop services (may not be running)", Colors.YELLOW)
+            
+            # Restore files
+            restored_items = []
+            for item in os.listdir(backup_name):
+                src_path = os.path.join(backup_name, item)
+                dest_path = item
+                
+                try:
+                    if os.path.isfile(src_path):
+                        # Backup current file if it exists
+                        if os.path.exists(dest_path):
+                            backup_current = f"{dest_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                            subprocess.run(['cp', dest_path, backup_current], check=True)
+                            self.print_colored(f"Current {dest_path} backed up as {backup_current}", Colors.BLUE)
+                        
+                        subprocess.run(['cp', src_path, dest_path], check=True)
+                        restored_items.append(dest_path)
+                        self.print_colored(f"✅ Restored file: {dest_path}", Colors.GREEN)
+                        
+                    elif os.path.isdir(src_path):
+                        # For directories, backup current if exists
+                        if os.path.exists(dest_path):
+                            backup_current = f"{dest_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                            subprocess.run(['mv', dest_path, backup_current], check=True)
+                            self.print_colored(f"Current {dest_path} moved to {backup_current}", Colors.BLUE)
+                        
+                        subprocess.run(['cp', '-r', src_path, dest_path], check=True)
+                        restored_items.append(dest_path)
+                        self.print_colored(f"✅ Restored directory: {dest_path}", Colors.GREEN)
+                        
+                except Exception as e:
+                    self.print_colored(f"⚠ Failed to restore {item}: {e}", Colors.YELLOW)
+            
+            # Cleanup extracted directory
+            subprocess.run(['rm', '-rf', backup_name], check=True)
+            
+            if restored_items:
+                self.print_colored(f"\n✅ Restore completed successfully!", Colors.GREEN)
+                self.print_colored(f"Restored {len(restored_items)} items:", Colors.GREEN)
+                for item in restored_items:
+                    self.print_colored(f"  - {item}", Colors.WHITE)
+                
+                # Ask about restarting services
+                if self.ask_yes_no("Restart Docker services now?", "y"):
+                    self.print_colored("Starting services...", Colors.BLUE)
+                    try:
+                        self._run_compose_command(['up', '-d'])
+                        self.print_colored("✅ Services started", Colors.GREEN)
+                        
+                        # Quick health check
+                        time.sleep(3)
+                        self.check_stack_health()
+                    except Exception as e:
+                        self.print_colored(f"⚠ Failed to start services: {e}", Colors.YELLOW)
+                        self.print_colored("You may need to start them manually with: docker-compose up -d", Colors.BLUE)
+                
+                self.log_action("Configuration Restore", "SUCCESS", f"From {backup_file}")
+            else:
+                self.print_colored("⚠ No items were restored", Colors.YELLOW)
+                
+        except Exception as e:
+            self.print_colored(f"❌ Restore operation failed: {e}", Colors.RED)
+            # Cleanup on failure
+            try:
+                if os.path.exists(temp_dir):
+                    subprocess.run(['rm', '-rf', temp_dir], check=True)
+                if os.path.exists(backup_name):
+                    subprocess.run(['rm', '-rf', backup_name], check=True)
+            except:
+                pass
+            raise
+
     def _cleanup_old_backups(self):
         """Keep only the 5 most recent backups"""
         try:
@@ -540,10 +700,11 @@ class MediaStackMaintenance:
                 ("3", "Restart entire stack", self.restart_stack),
                 ("4", "Clean up system", self.cleanup_system),
                 ("5", "Backup configurations", self.backup_configs),
-                ("6", "Check disk usage", self.check_disk_usage),
-                ("7", "Show service logs", self.show_service_logs),
-                ("8", "Full maintenance (all tasks)", self.full_maintenance),
-                ("9", "Show maintenance log", self.show_maintenance_log),
+                ("6", "Restore from backup", self.restore_backup),
+                ("7", "Check disk usage", self.check_disk_usage),
+                ("8", "Show service logs", self.show_service_logs),
+                ("9", "Full maintenance (all tasks)", self.full_maintenance),
+                ("0", "Show maintenance log", self.show_maintenance_log),
                 ("d", "Docker diagnostics", self.docker_diagnostics),
                 ("f", "Fix Docker permissions", self.fix_docker_permissions),
                 ("q", "Quit", None)
@@ -747,6 +908,7 @@ class MediaStackMaintenance:
                 'restart': self.restart_stack,
                 'cleanup': self.cleanup_system,
                 'backup': self.backup_configs,
+                'restore': self.restore_backup,
                 'disk': self.check_disk_usage,
                 'logs': self.show_service_logs,
                 'full': self.full_maintenance,

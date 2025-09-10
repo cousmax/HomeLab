@@ -40,6 +40,7 @@ python3 generate-compose-simple.py
 - **Automatic updates** - Pull latest images and restart services
 - **System cleanup** - Remove unused containers, images, volumes, networks
 - **Configuration backup** - Automated backups with rotation (keeps last 5)
+- **Configuration restore** - Restore from any backup with safety checks
 - **Disk usage monitoring** - Track space usage and clean large logs
 - **Service log viewing** - Interactive log browser for troubleshooting
 - **Full maintenance mode** - Run all tasks automatically
@@ -53,6 +54,7 @@ python3 maintain-stack.py health    # Check service health
 python3 maintain-stack.py update    # Update container images  
 python3 maintain-stack.py cleanup   # Clean up system
 python3 maintain-stack.py backup    # Backup configurations
+python3 maintain-stack.py restore   # Restore from backup
 python3 maintain-stack.py full      # Run all maintenance tasks
 ```
 
