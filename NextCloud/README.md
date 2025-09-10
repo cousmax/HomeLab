@@ -1,6 +1,11 @@
-# Nextcloud AIO Setup
+# NextCloud AIO Setup
 
-Automated installation scripts for Docker and Nextcloud All-in-One (AIO) with optional NFS storage integration.
+**Part of the [HomeLab Automation Suite](../README.md) - Automated installation scripts for Docker and Nextcloud All-in-One (AIO) with optional NFS storage integration.**
+
+> 💡 **Other HomeLab Stacks Available:**
+> - **[Media Management](../MediaManagement/README.md)** - Complete *arr stack for media automation
+> - **[Media Servers](../Media%20Servers/README.md)** - Immich, Jellyfin, Plex, Petio, Tautulli, Wizarr
+> - **[DevTools](../DevTools/README.md)** - Gitea development environment with CI/CD
 
 ## 🚀 Quick Start
 

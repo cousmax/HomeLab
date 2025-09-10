@@ -1,6 +1,11 @@
-# Media Servers
+# Media Servers Stack
 
-Complete automation for deploying and managing media server applications including Immich, Jellyfin, Plex, Petio, Tautulli, and Wizarr.
+**Part of the [HomeLab Automation Suite](../README.md) - Complete automation for deploying and managing media server applications including Immich, Jellyfin, Plex, Petio, Tautulli, and Wizarr.**
+
+> 💡 **Other HomeLab Stacks Available:**
+> - **[Media Management](../MediaManagement/README.md)** - Complete *arr stack for media automation
+> - **[DevTools](../DevTools/README.md)** - Gitea development environment with CI/CD
+> - **[NextCloud](../NextCloud/README.md)** - Self-hosted cloud storage
 
 ## Quick Start
 

@@ -1,6 +1,11 @@
 # DevTools Stack - Gitea & Development Environment
 
-**🔧 Complete self-hosted development environment with Git service, CI/CD, and development tools**
+**Part of the [HomeLab Automation Suite](../README.md) - Complete self-hosted development environment with Git service, CI/CD, and development tools**
+
+> 💡 **Other HomeLab Stacks Available:**
+> - **[Media Management](../MediaManagement/README.md)** - Complete *arr stack for media automation
+> - **[Media Servers](../Media%20Servers/README.md)** - Immich, Jellyfin, Plex, Petio, Tautulli, Wizarr
+> - **[NextCloud](../NextCloud/README.md)** - Self-hosted cloud storage
 
 ## 📋 Overview
 

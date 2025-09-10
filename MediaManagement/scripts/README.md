@@ -1,6 +1,11 @@
 # MediaManagement Scripts
 
-This directory contains automation scripts for setting up and managing your media stack.
+**Part of the [HomeLab Automation Suite](../../README.md) - This directory contains automation scripts for setting up and managing your *arr media stack.**
+
+> 💡 **Also Available in HomeLab Suite:**
+> - **[Media Servers Stack](../../Media%20Servers/README.md)** - Immich, Jellyfin, Plex, Petio, Tautulli, Wizarr
+> - **[DevTools Stack](../../DevTools/README.md)** - Gitea development environment with CI/CD
+> - **[NextCloud](../../NextCloud/README.md)** - Self-hosted cloud storage
 
 ## Quick Start
 

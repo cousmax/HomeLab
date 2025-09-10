@@ -1,6 +1,11 @@
 # Media Server Scripts
 
-Automation scripts for deploying and managing media server applications.
+**Part of the [HomeLab Automation Suite](../../README.md) - Automation scripts for deploying and managing media server applications.**
+
+> 💡 **Also Available in HomeLab Suite:**
+> - **[Media Management Stack](../../MediaManagement/README.md)** - Complete *arr stack for media automation
+> - **[DevTools Stack](../../DevTools/README.md)** - Gitea development environment with CI/CD
+> - **[NextCloud](../../NextCloud/README.md)** - Self-hosted cloud storage
 
 ## Scripts Overview
 

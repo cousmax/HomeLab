@@ -1,6 +1,11 @@
 # Media Management Stack
 
-Automated *arr stack deployment with Docker Compose following Trash Guides best practices for optimal hardlinks and performance.
+**Part of the [HomeLab Automation Suite](../README.md) - Automated *arr stack deployment with Docker Compose following Trash Guides best practices for optimal hardlinks and performance.**
+
+> 💡 **Other HomeLab Stacks Available:**
+> - **[Media Servers](../Media%20Servers/README.md)** - Immich, Jellyfin, Plex, Petio, Tautulli, Wizarr
+> - **[DevTools](../DevTools/README.md)** - Gitea development environment with CI/CD
+> - **[NextCloud](../NextCloud/README.md)** - Self-hosted cloud storage
 
 ## 🚀 Quick Start
 
