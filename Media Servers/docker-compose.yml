@@ -1,0 +1,89 @@
+# Example Media Server Stack
+# This is a template - use generate-media-servers.py to create customized version
+
+networks:
+  mediaserver-network:
+    name: mediaserver-network
+    driver: bridge
+
+volumes:
+  model-cache:
+
+services:
+  
+  # Jellyfin - Open source media server
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./jellyfin/config:/config
+      - /mnt/media:/data/media
+    ports:
+      - 8096:8096
+    restart: unless-stopped
+    networks:
+      - mediaserver-network
+
+  # Plex - Premium media server  
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - VERSION=docker
+    volumes:
+      - ./plex/config:/config
+      - /mnt/media:/data/media
+    restart: unless-stopped
+
+  # Tautulli - Plex analytics
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./tautulli/config:/config
+    ports:
+      - 8181:8181
+    restart: unless-stopped
+    networks:
+      - mediaserver-network
+
+  # Petio - Request management
+  petio:
+    image: ghcr.io/petio-team/petio:latest
+    container_name: petio
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./petio/config:/app/api/config
+      - ./petio/logs:/app/logs
+    ports:
+      - "7777:7777"
+    restart: unless-stopped
+    networks:
+      - mediaserver-network
+
+  # Wizarr - User management
+  wizarr:
+    image: ghcr.io/wizarrrr/wizarr:latest
+    container_name: wizarr
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./wizarr/database:/data/database
+    ports:
+      - "5690:5690"
+    restart: unless-stopped
+    networks:
+      - mediaserver-network
